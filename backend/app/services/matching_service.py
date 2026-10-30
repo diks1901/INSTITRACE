@@ -1,0 +1,189 @@
+"""Runs the rule-based matching engine across same-institution case pairs and
+persists explainable assessments. Human review decisions (CONFIRMED /
+REJECTED / DEFERRED, plus reviewer and rationale) are ALWAYS preserved across
+recomputation - only the automated recommendation fields are refreshed.
+"""
+from itertools import combinations
+
+from fastapi import HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from ..clock import now
+from ..config import get_settings
+from ..matching import engine
+from ..models import (
+    AlertStatus,
+    AlertType,
+    AssessmentStatus,
+    ComplaintCase,
+    CoordinationAlert,
+    RelationshipAssessment,
+    RelationshipType,
+)
+from ..schemas import RecomputeResult
+from .audit import record_audit
+
+
+def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
+    settings = get_settings()
+    version = settings.rule_engine_version
+    now_dt = now()
+
+    cases = list(db.scalars(select(ComplaintCase)))
+    existing: dict[str, RelationshipAssessment] = {
+        a.pair_key: a for a in db.scalars(select(RelationshipAssessment))
+    }
+    created = updated = preserved = 0
+    alerts_created = 0
+
+    by_institution: dict[int, list[ComplaintCase]] = {}
+    for c in cases:
+        by_institution.setdefault(c.institution_id, []).append(c)
+
+    for _inst_id, inst_cases in sorted(by_institution.items()):
+        for case_a, case_b in combinations(sorted(inst_cases, key=lambda c: c.case_id), 2):
+            result = engine.evaluate_pair(case_a, case_b, version)
+            if result is None:  # different institutions - never assessed
+                continue
+            key = engine.pair_key(case_a.case_id, case_b.case_id)
+            row = existing.get(key)
+            if row is None:
+                row = RelationshipAssessment(
+                    pair_key=key,
+                    source_case_id=case_a.id,
+                    candidate_case_id=case_b.id,
+                    institution_id=case_a.institution_id,
+                    relationship_type=result.relationship_type,
+                    supporting_evidence=result.supporting_evidence,
+                    conflicting_evidence=result.conflicting_evidence,
+                    missing_evidence=result.missing_evidence,
+                    rules_fired=result.rules_fired,
+                    score=result.score,
+                    rule_version=version,
+                    status=AssessmentStatus.PENDING_REVIEW,
+                    created_at=now_dt,
+                    last_recomputed_at=now_dt,
+                )
+                db.add(row)
+                db.flush()
+                created += 1
+                record_audit(
+                    db, actor=actor, event_type="ASSESSMENT_CREATED",
+                    entity_type="relationship_assessment", entity_id=str(row.id),
+                    summary=f"Assessment {row.relationship_type.value} for {key}",
+                    after={"type": row.relationship_type.value, "rule_version": version},
+                )
+                # A potential same-incident assessment ALSO raises an
+                # informational alert (dedupe prevents duplicates).
+                if result.relationship_type == RelationshipType.POTENTIAL_SAME_INCIDENT:
+                    dedupe = f"PSI:{key}"
+                    if not db.scalar(
+                        select(CoordinationAlert).where(CoordinationAlert.dedupe_key == dedupe)
+                    ):
+                        db.add(
+                            CoordinationAlert(
+                                alert_type=AlertType.POTENTIAL_SAME_INCIDENT,
+                                institution_id=case_a.institution_id,
+                                case_ids=[case_a.case_id, case_b.case_id],
+                                title=f"Potential same-incident relationship suggested - {key}",
+                                description=(
+                                    "The rule engine found supporting evidence that cases "
+                                    f"{case_a.case_id} and {case_b.case_id} may concern the same "
+                                    "incident. This is an automated recommendation requiring "
+                                    "human review - no records are merged or changed."
+                                ),
+                                dedupe_key=dedupe,
+                                created_at=now_dt,
+                            )
+                        )
+                        alerts_created += 1
+            else:
+                was_reviewed = row.status in (
+                    AssessmentStatus.CONFIRMED,
+                    AssessmentStatus.REJECTED,
+                    AssessmentStatus.DEFERRED,
+                )
+                if was_reviewed:
+                    preserved += 1
+                # refresh automated recommendation fields only
+                changed = (
+                    row.relationship_type != result.relationship_type
+                    or row.supporting_evidence != result.supporting_evidence
+                    or row.conflicting_evidence != result.conflicting_evidence
+                    or row.missing_evidence != result.missing_evidence
+                    or row.rules_fired != result.rules_fired
+                    or row.score != result.score
+                    or row.rule_version != version
+                )
+                if changed:
+                    before = {"type": row.relationship_type.value, "rule_version": row.rule_version}
+                    row.relationship_type = result.relationship_type
+                    row.supporting_evidence = result.supporting_evidence
+                    row.conflicting_evidence = result.conflicting_evidence
+                    row.missing_evidence = result.missing_evidence
+                    row.rules_fired = result.rules_fired
+                    row.score = result.score
+                    row.rule_version = version
+                    updated += 1
+                    if was_reviewed:
+                        record_audit(
+                            db, actor=actor, event_type="ASSESSMENT_RECOMPUTED",
+                            entity_type="relationship_assessment", entity_id=str(row.id),
+                            summary="Automated recommendation refreshed; human decision preserved",
+                            before=before,
+                            after={"type": row.relationship_type.value, "rule_version": version},
+                        )
+                row.last_recomputed_at = now_dt
+
+    db.commit()
+    return RecomputeResult(
+        assessments_created=created,
+        assessments_updated=updated,
+        alerts_created=alerts_created,
+        human_decisions_preserved=preserved,
+    )
+
+
+def review_assessment(db: Session, assessment_id: int, *, decision: AssessmentStatus,
+                      rationale: str, reviewer: str) -> RelationshipAssessment:
+    row = db.get(RelationshipAssessment, assessment_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    if decision not in (
+        AssessmentStatus.CONFIRMED,
+        AssessmentStatus.REJECTED,
+        AssessmentStatus.DEFERRED,
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Review decision must be CONFIRMED, REJECTED or DEFERRED",
+        )
+    before = {
+        "status": row.status.value,
+        "reviewer": row.reviewer_identity,
+        "rationale": row.reviewer_rationale,
+    }
+    row.status = decision
+    row.reviewer_identity = reviewer
+    row.reviewer_rationale = rationale
+    row.reviewed_at = now()
+    record_audit(
+        db, actor=reviewer, event_type="ASSESSMENT_REVIEWED",
+        entity_type="relationship_assessment", entity_id=str(row.id),
+        summary=f"Review decision: {decision.value}", rationale=rationale,
+        before=before,
+        after={"status": decision.value, "reviewer": reviewer, "rationale": rationale},
+        meta={"pair_key": row.pair_key},
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def count_open(db: Session) -> int:
+    return db.scalar(
+        select(func.count(CoordinationAlert.id)).where(
+            CoordinationAlert.status != AlertStatus.RESOLVED
+        )
+    ) or 0
