@@ -161,6 +161,19 @@ export interface Assessment {
   candidate_case: CaseRef | null;
 }
 
+/** One immutable human review record (append-only history). */
+export interface ReviewRecord {
+  id: number;
+  assessment_id: number;
+  decision: AssessmentStatus;
+  reviewer_identity: string;
+  reviewer_rationale: string;
+  reviewed_at: string;
+  evidence_snapshot: { relationship_type: RelationshipType; [key: string]: unknown } | null;
+  evidence_hash: string | null;
+  rule_version: string;
+}
+
 export interface AlertOut {
   id: number;
   alert_type: AlertType;

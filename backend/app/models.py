@@ -267,6 +267,33 @@ class RelationshipAssessment(Base):
     institution: Mapped[Institution | None] = relationship()
 
 
+class RelationshipReview(Base):
+    """Append-only history of human review decisions (FIX 2).
+
+    Every CONFIRMED / REJECTED / DEFERRED decision - including every re-review
+    - gets an immutable row here carrying the exact evidence snapshot, the
+    evidence hash and the rule-engine version the reviewer decided against.
+    Rows are never updated or deleted by the application; the assessment row
+    itself keeps only the latest state.
+    """
+
+    __tablename__ = "relationship_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assessment_id: Mapped[int] = mapped_column(
+        ForeignKey("relationship_assessments.id"), nullable=False, index=True
+    )
+    decision: Mapped[AssessmentStatus] = mapped_column(
+        Enum(AssessmentStatus, native_enum=False), nullable=False, index=True
+    )
+    reviewer_identity: Mapped[str] = mapped_column(String(128), nullable=False)
+    reviewer_rationale: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    evidence_snapshot: Mapped[dict | None] = mapped_column(JSON)
+    evidence_hash: Mapped[str | None] = mapped_column(String(64))
+    rule_version: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+
+
 class CoordinationAlert(Base):
     """In-app alert with an occurrence lifecycle.
 

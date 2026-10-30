@@ -36,6 +36,7 @@ from .models import (
     DemoUser,
     Institution,
     RelationshipAssessment,
+    RelationshipReview,
     TransferRecord,
     AuditEvent,
     UserRole,
@@ -108,9 +109,9 @@ def _attach_history(db: Session, case: ComplaintCase, entries: list[tuple[str, s
 
 def seed_demo(db: Session, reset: bool = False) -> dict:
     if reset:
-        for model in (AlertConditionState, CoordinationAlert, RelationshipAssessment,
-                      TransferRecord, CaseAction, AuditEvent, ComplaintCase,
-                      Institution, Bureau, DemoUser):
+        for model in (AlertConditionState, CoordinationAlert, RelationshipReview,
+                      RelationshipAssessment, TransferRecord, CaseAction, AuditEvent,
+                      ComplaintCase, Institution, Bureau, DemoUser):
             db.query(model).delete(synchronize_session=False)
         db.commit()
 

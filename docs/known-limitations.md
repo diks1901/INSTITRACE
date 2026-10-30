@@ -15,10 +15,12 @@ missing. None of these are hidden elsewhere.
 ## Data and integrations
 
 4. **PostgreSQL verified via bundled server (pgserver, PG 16.2)** — migrations, seed and the full
-   63-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
+   71-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
    documented-but-not-executed in this sandbox.
-   (2026-10-30: full suite, `alembic upgrade head` on a fresh PG database and the seed were
-   re-verified against PG 16.2 after the occurrence-lifecycle migration `a2b7c9d1e001`.)
+   (2026-10-30: full suite, `alembic upgrade head` on a fresh PG database, AND legacy-upgrade
+   verification - build a database at the initial revision `69e0eedb34ac`, insert legacy rows,
+   upgrade to head, recompute alerts - were re-verified against PG 16.2 after migrations
+   `a2b7c9d1e001` + `b3c4d5e6f002`.)
 5. **No external notifications** (email/SMS) — in-app alerts only, per the MVP scope. The alert
    refresh is manual/`POST /api/v1/alerts/refresh` or on recomputation; there is no background
    scheduler daemon.

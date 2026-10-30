@@ -6,8 +6,10 @@ import {
   AlertTypeBadge,
   DemoBadge,
   EmptyState,
+  OccurrenceBadge,
   REL_LABELS,
   RelBadge,
+  RereviewBadge,
   ReviewBadge,
   STATUS_LABELS,
   StatusBadge,
@@ -52,6 +54,20 @@ describe('InstitutionForm client-side validation', () => {
     expect(screen.getByText('Permanent ID must be at least 3 characters.')).toBeInTheDocument();
     expect(screen.getByText('Name must be at least 3 characters.')).toBeInTheDocument();
     expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+describe('occurrence & re-review badges', () => {
+  it('hides the recurrence badge for first occurrences and shows it for recurrences', () => {
+    const { container, rerender } = render(<OccurrenceBadge occurrence={1} />);
+    expect(container.querySelector('.badge.occurrence')).toBeNull();
+    rerender(<OccurrenceBadge occurrence={2} />);
+    expect(screen.getByText('Recurrence #2')).toBeInTheDocument();
+  });
+
+  it('labels outdated decisions unmistakably', () => {
+    render(<RereviewBadge />);
+    expect(screen.getByText(/Outdated decision/i)).toBeInTheDocument();
   });
 });
 

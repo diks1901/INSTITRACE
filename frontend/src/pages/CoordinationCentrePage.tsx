@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, buildQuery } from '../api/client';
-import { AlertOut, Assessment, AssessmentStatus, MetaInfo, Page } from '../api/types';
+import { AlertOut, Assessment, AssessmentStatus, MetaInfo, Page, ReviewRecord } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import {
   AlertStatusBadge,
@@ -494,6 +494,7 @@ function AssessmentsTab({
               </div>
             </div>
           )}
+          {expanded === a.id && <ReviewHistory assessmentId={a.id} />}
         </div>
       ))}
       <Pager page={data.page} pageSize={data.page_size} total={data.total} onPage={(p) => { setPage(p); void load(p); }} />
@@ -563,3 +564,69 @@ function ReviewForm({ assessment, onDone }: { assessment: Assessment; onDone: ()
 }
 
 
+
+/** Append-only human review history for one assessment (FIX 2).
+ * Every decision - including re-reviews - is listed with the exact evidence
+ * snapshot/hash and rule-engine version it was made against. */
+function ReviewHistory({ assessmentId }: { assessmentId: number }) {
+  const [rows, setRows] = useState<ReviewRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setRows(null);
+    setError(null);
+    api
+      .get<ReviewRecord[]>(`/relationships/${assessmentId}/reviews`)
+      .then((r) => alive && setRows(r))
+      .catch((e) => alive && setError(e instanceof Error ? e.message : 'Could not load review history'));
+    return () => {
+      alive = false;
+    };
+  }, [assessmentId]);
+
+  return (
+    <div style={{ marginTop: 12, borderTop: '1px solid var(--line, #dfe4ea)', paddingTop: 10 }}>
+      <strong>Review history</strong>
+      {error && <div className="notice error small">{error}</div>}
+      {rows === null && !error && <p className="small">Loading…</p>}
+      {rows !== null && rows.length === 0 && !error && (
+        <p className="small">No human decisions recorded yet for this assessment.</p>
+      )}
+      {rows !== null && rows.length > 0 && (
+        <ul className="evidence-list">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <ReviewBadge status={r.decision} />{' '}
+              <span className="small">
+                by <strong>{r.reviewer_identity}</strong> · {formatDateTime(r.reviewed_at)} · rules v
+                {r.rule_version}
+                {r.evidence_snapshot && (
+                  <>
+                    {' '}· decided against evidence recommending{' '}
+                    <RelBadge type={r.evidence_snapshot.relationship_type} />
+                  </>
+                )}
+                {r.evidence_hash && (
+                  <>
+                    {' '}· evidence fingerprint <code>{r.evidence_hash.slice(0, 12)}…</code>
+                  </>
+                )}
+                {r.reviewer_rationale && (
+                  <>
+                    <br />
+                    <em>&ldquo;{r.reviewer_rationale}&rdquo;</em>
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="small muted">
+        History is append-only: earlier decisions are never edited or erased — re-reviews add a
+        new entry.
+      </p>
+    </div>
+  );
+}

@@ -9,12 +9,14 @@ from ..models import (
     ComplaintCase,
     DemoUser,
     RelationshipAssessment,
+    RelationshipReview,
     RelationshipType,
 )
 from ..schemas import (
     Page,
     RecomputeResult,
     RelationshipAssessmentOut,
+    ReviewOut,
     ReviewRequest,
 )
 from ..security import require_roles
@@ -98,3 +100,16 @@ def review(
         reviewer=user.username,
     )
     return _with_cases(db, [row])[0]
+
+
+@router.get("/{pk}/reviews", response_model=list[ReviewOut])
+def review_history(pk: int, db: Session = Depends(get_db),
+                   _: DemoUser = Depends(require_roles())):
+    """Append-only review history for an assessment, newest first."""
+    if db.get(RelationshipAssessment, pk) is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    return db.scalars(
+        select(RelationshipReview)
+        .where(RelationshipReview.assessment_id == pk)
+        .order_by(RelationshipReview.reviewed_at.desc(), RelationshipReview.id.desc())
+    ).all()

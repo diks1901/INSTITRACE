@@ -47,6 +47,33 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("logical_key"),
     )
+    # CRITICAL backfill (FIX 1): pre-existing alert rows mean their conditions
+    # already have history. Without this, the first recomputation on a legacy
+    # database would try to recreate occurrence 1 for a condition whose
+    # occurrence 1 already exists -> UNIQUE constraint failure, or silently
+    # resurrect a human-resolved condition.
+    #   occurrences := highest occurrence seen for the key (legacy rows are 1)
+    #   present     := the key currently has an ACTIVE alert row (so the
+    #                  evaluator reuses it instead of colliding on occurrence
+    #                  1). Keys whose rows are all RESOLVED start as absent,
+    #                  so a genuinely returning condition opens the NEXT
+    #                  occurrence (occurrences+1) without any duplicate.
+    op.execute(sa.text(
+        """
+        INSERT INTO alert_condition_state
+            (logical_key, alert_type, present, occurrences, updated_at)
+        SELECT a.logical_key,
+               MAX(a.alert_type),
+               (MAX(CASE WHEN a.status != 'RESOLVED' THEN 1 ELSE 0 END) <> 0),
+               MAX(a.occurrence),
+               CURRENT_TIMESTAMP
+        FROM coordination_alerts a
+        WHERE a.logical_key NOT IN (
+            SELECT logical_key FROM alert_condition_state
+        )
+        GROUP BY a.logical_key
+        """
+    ))
 
     # --- relationship_assessments: evidence-versioned review -------------
     with op.batch_alter_table("relationship_assessments") as batch:

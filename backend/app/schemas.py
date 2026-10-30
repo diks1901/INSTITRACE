@@ -231,6 +231,20 @@ class NextActionUpdateRequest(BaseModel):
 
 
 # ---------------------------------------------------------- relationships ---
+class ReviewOut(BaseModel):
+    """One immutable human review record (append-only history, FIX 2)."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    assessment_id: int
+    decision: AssessmentStatus
+    reviewer_identity: str
+    reviewer_rationale: str
+    reviewed_at: datetime
+    evidence_snapshot: dict | None = None
+    evidence_hash: str | None = None
+    rule_version: str
+
+
 class RelationshipAssessmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

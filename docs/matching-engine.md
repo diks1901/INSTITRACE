@@ -60,6 +60,24 @@ Every evidence item is typed (`INCIDENT_REFERENCE`, `PROCEEDING_REFERENCE`,
 `SOURCE_RECORD_PROVENANCE`) so the UI and API consumers can see *which kind of evidence*
 drove the recommendation.
 
+## Evidence fingerprints and review versioning
+
+`compute_evidence_hash()` (in `backend/app/services/matching_service.py`) fingerprints the
+material evidence **and the rule-engine version**. Two consequences are guaranteed by
+`backend/tests/test_review_history.py`:
+
+- A change in the evidence (e.g. a complaint narrative is corrected to cite a different
+  incident) flips the hash → any prior CONFIRMED/REJECTED/DEFERRED decision is preserved but
+  flagged `requires_rereview`.
+- A change in **rule-engine version alone** flips the hash → a decision made under older rule
+  semantics is preserved but flagged, even if the serialized evidence output is byte-identical
+  (the version is hashed alongside the payload).
+
+Every decision is additionally preserved as an append-only `relationship_reviews` row
+(decision, reviewer, rationale, timestamp, evidence snapshot, evidence hash, rule version) and
+is returned by `GET /api/v1/relationships/{id}/reviews` (newest first). Nothing in the history
+table is ever updated or deleted by the application.
+
 Pairs across **different institutions are never assessed** — similar wording between different
 institutions produces no relationship record at all (fixture Scenario E).
 

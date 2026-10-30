@@ -21,6 +21,7 @@ from app.models import (
     Institution,
     Priority,
     RelationshipAssessment,
+    RelationshipReview,
     RelationshipType,
 )
 from app.services import matching_service
@@ -82,11 +83,18 @@ def psi_pair(db):
     )
     assert row is not None
     yield a, b, row
-    for extra in db.scalars(
+    probe_assessments = db.scalars(
         select(RelationshipAssessment).where(
             RelationshipAssessment.institution_id == inst.id
         )
+    ).all()
+    for extra in db.scalars(
+        select(RelationshipReview).where(
+            RelationshipReview.assessment_id.in_([x.id for x in probe_assessments])
+        )
     ).all():
+        db.delete(extra)
+    for extra in probe_assessments:
         db.delete(extra)
     for alert in db.scalars(
         select(matching_service.CoordinationAlert).where(

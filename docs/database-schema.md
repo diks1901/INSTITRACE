@@ -19,6 +19,7 @@ erDiagram
     complaint_cases ||--o{ relationship_assessments : "candidate side"
     institutions ||--o{ relationship_assessments : "context"
     institutions ||--o{ coordination_alerts : "context"
+    relationship_assessments ||--o{ relationship_reviews : "append-only review history"
 
     bureaus {
         int id PK
@@ -132,6 +133,17 @@ erDiagram
         int occurrences "how often the condition has (re)appeared"
         datetime updated_at
     }
+    relationship_reviews {
+        int id PK
+        int assessment_id FK "-> relationship_assessments"
+        string decision "CONFIRMED|REJECTED|DEFERRED"
+        string reviewer_identity
+        text reviewer_rationale
+        datetime reviewed_at
+        json evidence_snapshot "exact evidence the reviewer saw"
+        string evidence_hash "hash incl. rule-engine version"
+        string rule_version "rules the decision was made under"
+    }
     audit_events {
         int id PK
         string actor
@@ -163,7 +175,8 @@ erDiagram
   `coordination_alerts (logical_key, occurrence)` (one row per condition occurrence;
   `dedupe_key` retains its legacy value for occurrence 1).
 - **Foreign keys**: cases → institutions/bureaus; histories → cases; assessments → both cases
-  and institution; alerts → institution. Case history and transfers cascade with their case.
+  and institution; alerts → institution; `relationship_reviews` → assessments. Case history and
+  transfers cascade with their case. Review rows are append-only (no update/delete anywhere).
 - **Indexes**: `permanent_id`, `case_id`, `institution_id`, `bureau_id`, `status`,
   `expected_disposal_date`, alert `(type, status)`, assessment `(status, relationship_type)`,
   audit `(entity_type, entity_id)`, audit `created_at`.

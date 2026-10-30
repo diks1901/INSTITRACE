@@ -19,6 +19,7 @@ from ..models import (
     ComplaintCase,
     CoordinationAlert,
     RelationshipAssessment,
+    RelationshipReview,
     RelationshipType,
 )
 from ..schemas import RecomputeResult
@@ -28,9 +29,16 @@ import hashlib
 import json
 
 
-def compute_evidence_hash(relationship_type, supporting, conflicting, missing, score) -> str:
+def compute_evidence_hash(relationship_type, supporting, conflicting, missing, score,
+                          rule_version: str = "") -> str:
     """Deterministic fingerprint of the material evidence behind an assessment.
-    Used to pin human decisions to the exact evidence the reviewer saw."""
+
+    Used to pin human decisions to the exact evidence the reviewer saw. The
+    rule-engine version is part of the fingerprint (FIX 3): a decision made
+    under one version of the rule semantics must NOT tacitly cover evidence
+    produced under a different version, even when the serialized evidence
+    looks identical.
+    """
     payload = json.dumps(
         {
             "relationship_type": str(relationship_type.value if hasattr(relationship_type, "value") else relationship_type),
@@ -38,6 +46,7 @@ def compute_evidence_hash(relationship_type, supporting, conflicting, missing, s
             "conflicting": conflicting,
             "missing": missing,
             "score": score,
+            "rule_version": rule_version,
         },
         sort_keys=True,
         default=str,
@@ -70,6 +79,7 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
             new_hash = compute_evidence_hash(
                 result.relationship_type, result.supporting_evidence,
                 result.conflicting_evidence, result.missing_evidence, result.score,
+                rule_version=version,
             )
             row = existing.get(key)
             if row is None:
@@ -227,9 +237,25 @@ def review_assessment(db: Session, assessment_id: int, *, decision: AssessmentSt
     }
     row.reviewed_evidence_hash = row.evidence_hash or compute_evidence_hash(
         row.relationship_type, row.supporting_evidence, row.conflicting_evidence,
-        row.missing_evidence, row.score,
+        row.missing_evidence, row.score, rule_version=row.rule_version,
     )
     row.requires_rereview = False
+    # Append-only review history (FIX 2): every decision - including every
+    # RE-review - is preserved with the evidence snapshot/hash and rule-engine
+    # version it was made against. The assessment row keeps only the latest
+    # state; the full history lives in relationship_reviews and is never erased.
+    db.add(
+        RelationshipReview(
+            assessment_id=row.id,
+            decision=decision,
+            reviewer_identity=reviewer,
+            reviewer_rationale=rationale,
+            reviewed_at=row.reviewed_at,
+            evidence_snapshot=dict(row.evidence_snapshot),
+            evidence_hash=row.reviewed_evidence_hash,
+            rule_version=row.rule_version,
+        )
+    )
     record_audit(
         db, actor=reviewer, event_type="ASSESSMENT_REVIEWED",
         entity_type="relationship_assessment", entity_id=str(row.id),

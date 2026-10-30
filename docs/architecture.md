@@ -44,14 +44,20 @@ flowchart LR
    - Institution linkage is just a foreign key.
    - Cross-bureau coordination is a `coordination_alerts` row evaluated from current workload.
    - Same-incident suspicion is a `relationship_assessments` row with explicit evidence lists
-     and a human-review workflow.
+     and a human-review workflow. Every human decision is additionally recorded as an
+     append-only `relationship_reviews` row (decision, reviewer, rationale, timestamp, evidence
+     snapshot, evidence hash, rule version) - re-reviews never erase earlier decisions.
 
 3. **Two history layers**: `case_actions` is the per-case business history; `audit_events` is the
    system-wide, append-only audit trail (no update/delete routes exist).
 
-4. **Idempotent alerting**: every operational alert has a deterministic `dedupe_key`. Re-running
-   evaluation cannot duplicate an alert, auto-resolves alerts whose condition stopped holding,
-   and never reopens human-resolved ones.
+4. **Occurrence-aware alerting**: every operational alert has a stable `logical_key` plus an
+   `occurrence` number; `alert_condition_state` tracks whether each condition was present at
+   the last evaluation. Re-running evaluation cannot duplicate an alert; a condition that stops
+   holding is auto-resolved as `system (auto)`; a condition that *returns* reopens a NEW
+   occurrence while the resolved history row remains; a human resolution while the condition
+   persists suppresses silent respawning. Migrations backfill the state table for legacy
+   databases so upgraded installs never collide on occurrence 1.
 
 5. **Injectable clock**: all deadline logic reads `app.clock.now()`, so tests pin time and the
    behaviour is deterministic.
