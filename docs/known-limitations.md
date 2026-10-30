@@ -15,7 +15,7 @@ missing. None of these are hidden elsewhere.
 ## Data and integrations
 
 4. **PostgreSQL verified via bundled server (pgserver, PG 16.2)** — migrations, seed and the full
-   71-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
+   83-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
    documented-but-not-executed in this sandbox.
    (2026-10-30: full suite, `alembic upgrade head` on a fresh PG database, AND legacy-upgrade
    verification - build a database at the initial revision `69e0eedb34ac`, insert legacy rows,

@@ -142,7 +142,7 @@ pip install psycopg2-binary
 python -m app.seed
 ```
 
-> **Verification status:** BOTH database paths pass the full 71-test suite. In the build sandbox
+> **Verification status:** BOTH database paths pass the full 83-test suite. In the build sandbox
 > PostgreSQL 16.2 (bundled via `pgserver`) ran: `alembic upgrade head`, the seed, the live API
 > smoke test, and the entire pytest suite (`INSTITRACE_TEST_DATABASE_URL=<pg dsn> pytest tests/`).
 > A Windows TCP-install walkthrough is documented but was not executable inside the sandbox.

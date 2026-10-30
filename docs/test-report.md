@@ -109,8 +109,11 @@ documentation claim. All fixed and regression-tested; no features added, no test
    migration `c5d6e7f8a103`), so every informational alert is pinned to the exact assessment
    and evidence version it was raised from; the Coordination Centre displays the link.
 3. **Stale test-count documentation.** This report claimed 13 frontend tests and a 71-test
-   backend; the real suites have long been 15 frontend / 76 backend (per-file counts were also
-   stale for 5 suites). Corrected to actual measured numbers.
+   backend; the real suites were 15 frontend / 76 backend at the time (per-file counts were also
+   stale for 5 suites). Corrected to actual measured numbers. A subsequent mandate-driven round
+   added 7 regression tests (PSI-lifecycle +3, config audit +4), bringing the backend suite to
+   its current **83** — all counts above and in README/known-limitations reflect 83 passed on
+   both engines, 15 frontend.
 
 Both defects verified in code before changing anything; all fixes followed by fresh-database
 verification on SQLite and PostgreSQL (see the pytest sections above).
@@ -229,7 +232,7 @@ With `uvicorn app.main:app` on :8000 and `vite` on :5173 (proxy → backend):
 ## NOT VERIFIED (honest list)
 
 - **TCP PostgreSQL + DSN via environment .env loading** — verified using PostgreSQL 16.2 over a
-  local unix socket (pgserver) with migrations, seed and the full 50-test suite; a Windows
+  local unix socket (pgserver) with migrations, seed and the full 83-test suite; a Windows
   TCP-DSN walkthrough is documented but not executed here.
 - **Browser automation** (no Playwright/Cypress E2E) — interactions verified by HTTP-level tests,
   component tests with jsdom, and manual curl-based E2E.
