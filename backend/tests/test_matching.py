@@ -114,9 +114,27 @@ def test_repeat_recompute_creates_no_duplicates(db):
     after_a = db.scalar(select(func.count(RelationshipAssessment.id)))
     after_al = db.scalar(select(func.count(CoordinationAlert.id)))
     assert before_a == after_a, "recompute must not create duplicate assessments"
-    assert before_al == after_al, "alert evaluation must not create duplicates"
+    # Alert semantics (FIX 1): a condition that disappears and returns opens a
+    # NEW occurrence, so global alert-row counts may legitimately grow when an
+    # earlier test pinned the clock and changed conditions. The real invariant
+    # is: at a steady state, re-evaluating creates nothing and there is at
+    # most one ACTIVE alert per condition key.
+    steady = alert_service.evaluate_alerts(db)
+    again = alert_service.evaluate_alerts(db)  # unchanged conditions -> no work
+    assert again["alerts_created"] == 0
+    assert again["alerts_auto_resolved"] == 0
+    _ = steady
     assert r1.assessments_created == 0
     assert r1.alerts_created == 0
+    # at most one ACTIVE alert per condition key across the whole table
+    active_keys = [
+        a.logical_key
+        for a in db.scalars(
+            select(CoordinationAlert).where(CoordinationAlert.status != AlertStatus.RESOLVED)
+        ).all()
+        if a.logical_key
+    ]
+    assert len(active_keys) == len(set(active_keys)), "duplicate active alert for same condition"
 
 
 def test_human_decision_preserved_across_recompute(db):
@@ -136,12 +154,18 @@ def test_human_decision_preserved_across_recompute(db):
 
 
 def test_rule_version_stamped_and_refresh(db):
+    from app.config import get_settings
+
     assessment = pair(db, "DEMO-CASE-001", "DEMO-CASE-002")
-    assert assessment.rule_version == "1.0.0"
-    # each supporting evidence item carries its rule name and version
+    assert assessment.rule_version == get_settings().rule_engine_version
+    # each supporting evidence item carries its rule name, version and type
     for ev in assessment.supporting_evidence:
         assert ev["rule"].startswith("R")
         assert ev["rule_version"]
+        assert ev["type"] in {
+            "INCIDENT_REFERENCE", "PROCEEDING_REFERENCE", "DATE_COMPATIBILITY",
+            "TEXT_CORROBORATION", "SOURCE_RECORD_PROVENANCE", "CASE_CROSS_REFERENCE",
+        }
 
 
 def test_engine_rejects_self_pair(db):
@@ -150,3 +174,83 @@ def test_engine_rejects_self_pair(db):
     case = get_case_by_uid(db, "DEMO-CASE-001")
     with pytest.raises(ValueError):
         engine.evaluate_pair(case, case, "1.0.0")
+
+
+# ------------------------------------------------------------- FIX 2 ----------
+# source_record_ref (provenance) is NOT an incident reference. It must never
+# confirm, or contribute support toward, POTENTIAL_SAME_INCIDENT.
+
+def _probe_case(id_, uid, source_ref=None, description="No incident reference given."):
+    from app.models import ComplaintCase as CC
+    from app.models import CaseStatus as CS, Priority
+
+    return CC(
+        id=id_, case_id=uid, institution_id=1,
+        receipt_date=date(2026, 1, 10), category="Fee Refund",
+        subject=f"Synthetic provenance probe {uid}",
+        description=description,
+        status=CS.UNDER_PROCESS, bureau_id=1, priority=Priority.MEDIUM,
+        source_record_ref=source_ref,
+    )
+
+
+def test_shared_source_record_ref_is_procedural_never_psi():
+    """Identical source_record_ref -> PROCEDURAL_LINK with SOURce-record
+    provenance evidence; it must NOT produce POTENTIAL_SAME_INCIDENT."""
+    a = _probe_case(1, "P-1", source_ref="AICTE/2025/R-44881")
+    b = _probe_case(2, "P-2", source_ref="AICTE/2025/R-44881")
+    result = engine.evaluate_pair(a, b, "1.1.0")
+    assert result is not None
+    assert result.relationship_type == RelationshipType.PROCEDURAL_LINK
+    assert (result.score or 0) < engine.SAME_INCIDENT_MIN_SUPPORT
+    prov = [ev for ev in result.supporting_evidence if ev.get("type") == "SOURCE_RECORD_PROVENANCE"]
+    assert prov, "shared source record must be recorded as provenance evidence"
+    assert "AICTE/2025/R-44881" in prov[0]["detail"]
+
+
+def test_shared_source_ref_plus_similar_text_still_not_psi():
+    """Even with highly similar narratives, a shared source_record_ref alone
+    can never reach the PSI support threshold (provenance weight is 0)."""
+    text = ("Student withdrew admission and requests hostel fee refund. "
+            "Refund pending since January at the north block hostel office.")
+    a = _probe_case(1, "P-3", source_ref="AICTE/2025/R-44881", description=text)
+    b = _probe_case(2, "P-4", source_ref="AICTE/2025/R-44881", description=text)
+    result = engine.evaluate_pair(a, b, "1.1.0")
+    assert result is not None
+    assert result.relationship_type != RelationshipType.POTENTIAL_SAME_INCIDENT
+    assert (result.score or 0) < engine.SAME_INCIDENT_MIN_SUPPORT
+
+
+def test_different_source_record_refs_not_procedural():
+    """Non-matching source refs prove nothing: no procedural link, no PSI."""
+    a = _probe_case(1, "P-5", source_ref="AICTE/2025/R-10001")
+    b = _probe_case(2, "P-6", source_ref="AICTE/2025/R-20002")
+    result = engine.evaluate_pair(a, b, "1.1.0")
+    assert result.relationship_type != RelationshipType.PROCEDURAL_LINK
+    assert result.relationship_type != RelationshipType.POTENTIAL_SAME_INCIDENT
+    assert not any(ev.get("type") == "SOURCE_RECORD_PROVENANCE"
+                   for ev in result.supporting_evidence)
+
+
+def test_shared_incident_reference_still_psi():
+    """Explicit shared incident reference in the narrative remains a strong
+    automatic signal (R1) even when source_record_refs differ."""
+    text_a = ("Regarding incident INC-2030-0777 at the examination hall. "
+              "Incident dated 2030-02-10, reported to the grievance cell the same day.")
+    text_b = ("Follow-up on incident INC-2030-0777 at the examination hall. "
+              "Incident dated 2030-02-10, reported to the grievance cell the same day.")
+    a = _probe_case(1, "P-7", source_ref="AICTE/2030/R-1", description=text_a)
+    b = _probe_case(2, "P-8", source_ref="AICTE/2030/R-2", description=text_b)
+    result = engine.evaluate_pair(a, b, "1.1.0")
+    assert result.relationship_type == RelationshipType.POTENTIAL_SAME_INCIDENT
+    assert (result.score or 0) >= engine.SAME_INCIDENT_MIN_SUPPORT
+    inc = [ev for ev in result.supporting_evidence if ev.get("type") == "INCIDENT_REFERENCE"]
+    assert inc and "INC-2030-0777" in inc[0]["detail"]
+
+
+def test_institution_identity_alone_never_assesses_psi(db):
+    """Belonging to the same institution is never, by itself, evidence of a
+    shared incident: sparse same-institution cases yield INSUFFICIENT_EVIDENCE."""
+    assessment = pair(db, "DEMO-CASE-005", "DEMO-CASE-006")
+    assert assessment.relationship_type == RelationshipType.INSUFFICIENT_EVIDENCE
+    assert assessment.score is None

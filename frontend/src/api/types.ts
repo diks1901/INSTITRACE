@@ -143,6 +143,14 @@ export interface Assessment {
   rules_fired: string[];
   score: number | null;
   rule_version: string;
+  evidence_hash: string | null;
+  reviewed_evidence_hash: string | null;
+  evidence_snapshot: {
+    relationship_type: RelationshipType;
+    reviewed_at: string;
+    [key: string]: unknown;
+  } | null;
+  requires_rereview: boolean;
   status: AssessmentStatus;
   reviewer_identity: string | null;
   reviewer_rationale: string | null;
@@ -160,6 +168,7 @@ export interface AlertOut {
   case_ids: string[];
   title: string;
   description: string;
+  occurrence: number;
   status: AlertStatus;
   acknowledged_by: string | null;
   acknowledged_at: string | null;

@@ -15,8 +15,10 @@ missing. None of these are hidden elsewhere.
 ## Data and integrations
 
 4. **PostgreSQL verified via bundled server (pgserver, PG 16.2)** — migrations, seed and the full
-   50-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
+   63-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
    documented-but-not-executed in this sandbox.
+   (2026-10-30: full suite, `alembic upgrade head` on a fresh PG database and the seed were
+   re-verified against PG 16.2 after the occurrence-lifecycle migration `a2b7c9d1e001`.)
 5. **No external notifications** (email/SMS) — in-app alerts only, per the MVP scope. The alert
    refresh is manual/`POST /api/v1/alerts/refresh` or on recomputation; there is no background
    scheduler daemon.
@@ -40,4 +42,11 @@ missing. None of these are hidden elsewhere.
 
 13. **No stakeholder validation, performance benchmarking or accuracy claims exist** — and none
     are made. All UI screens label the dataset as synthetic demo data.
-14. **No automated browser E2E suite** — see `docs/test-report.md` for what is covered instead.
+14. **No automated browser E2E suite** — see `docs/test-report.md` for what is covered instead
+    (the 7 demo scenarios A–G incl. alert-recurrence legs were verified live through the API
+    via the Vite proxy; see the Hunter-pass section of the test report).
+15. **A recurring *coordination* alert for the same cases can only be exercised through the
+    service layer**, because disposing a case is terminal by design (`DISPOSED` has no outgoing
+    transitions) — the HTTP API cannot reactivate the same cases. The deadline channel
+    recurrence is fully demo-able through the UI/API (move the expected disposal date). This is
+    a workflow choice, not a bug: real complaints are not un-disposed.

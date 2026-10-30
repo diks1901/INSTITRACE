@@ -64,6 +64,29 @@ export function ReviewBadge({ status }: { status: AssessmentStatus }) {
   return <span className={`badge review-${status}`}>{REVIEW_LABELS[status] ?? status}</span>;
 }
 
+export function OccurrenceBadge({ occurrence }: { occurrence: number }) {
+  if (!occurrence || occurrence <= 1) return null;
+  return (
+    <span
+      className="badge occurrence"
+      title="This condition was resolved before and recurred; this alert is a new occurrence. Earlier occurrences remain in the resolved history."
+    >
+      Recurrence #{occurrence}
+    </span>
+  );
+}
+
+export function RereviewBadge() {
+  return (
+    <span
+      className="badge rereview"
+      title={"The evidence changed after a human decision was recorded. That decision is preserved but no longer covers the current evidence - re-review required. The original evidence snapshot is kept on the record and in the audit trail."}
+    >
+      Outdated decision — re-review
+    </span>
+  );
+}
+
 export function DemoBadge() {
   return (
     <span className="badge demo" title="Synthetic demo data - not a real AICTE record">

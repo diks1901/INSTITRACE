@@ -9,12 +9,19 @@ Design contract (see docs/matching-engine.md):
     closes or disposes complaints.
 
 Rules (stable names, engine version stamped on every assessment):
-  R1_SHARED_INCIDENT_REFERENCE   v1  weight +3
-  R2_SHARED_PROCEEDING_REFERENCE v1  weight +2
-  R3_INCIDENT_DATE_COMPATIBILITY v1  weight +1 / conflict flag
-  R4_EXPLICIT_CASE_CROSS_REFERENCE v1 procedural link hint
-  R5_DETAIL_CORROBORATION        v1  weight +1 (weak, never sufficient alone)
-  R6_DISTINCT_INCIDENT_REFERENCES v1 conflict flag
+  R1_SHARED_INCIDENT_REFERENCE        v1  weight +3  (explicit INC- refs only)
+  R2_SHARED_PROCEEDING_REFERENCE      v1  weight +2
+  R3_INCIDENT_DATE_COMPATIBILITY      v1  weight +1 / conflict flag
+  R4_EXPLICIT_CASE_CROSS_REFERENCE    v1  procedural link hint
+  R5_DETAIL_CORROBORATION             v1  weight +1 (weak, never sufficient alone)
+  R6_DISTINCT_INCIDENT_REFERENCES     v1  conflict flag
+  R7_SHARED_SOURCE_RECORD_PROVENANCE  v1  provenance link -> PROCEDURAL_LINK only
+
+Evidence typing: every evidence item carries a `type` distinguishing
+INCIDENT_REFERENCE (a case-event identifier) from SOURCE_RECORD_PROVENANCE
+(which intake system logged the record). Provenance is NEVER incident identity:
+two complaints arriving through the same source record are linked procedurally,
+not established as one incident.
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -78,8 +85,11 @@ def extract_facts(case: ComplaintCase) -> CaseFacts:
     )
 
 
-def _ev(rule: str, version: str, detail: str, weight: int | None = None) -> dict:
+def _ev(rule: str, version: str, detail: str, weight: int | None = None,
+        evidence_type: str | None = None) -> dict:
     item = {"rule": rule, "rule_version": version, "detail": detail}
+    if evidence_type is not None:
+        item["type"] = evidence_type
     if weight is not None:
         item["weight"] = weight
     return item
@@ -110,12 +120,10 @@ def evaluate_pair(
     # --- R4: explicit cross-reference to the other case id -----------------
     r4_hit = a.case_id in b.cross_case_references or b.case_id in a.cross_case_references
 
-    # --- R1: shared incident reference (strong) -----------------------------
-    shared_inc = (a.incident_references & b.incident_references) or (
-        a.source_record_ref
-        and b.source_record_ref
-        and {a.source_record_ref} & {b.source_record_ref}
-    )
+    # --- R1: shared INCIDENT reference (strong) ------------------------------
+    # Only explicit incident identifiers (INC-YYYY-NNN) qualify. A source-record
+    # reference says WHERE a record was logged, not WHICH incident it concerns.
+    shared_inc = a.incident_references & b.incident_references
     if shared_inc:
         fired.append("R1_SHARED_INCIDENT_REFERENCE")
         support.append(
@@ -124,9 +132,31 @@ def evaluate_pair(
                 rule_version,
                 f"Both cases cite the same incident reference(s): {sorted(shared_inc)}.",
                 weight=3,
+                evidence_type="INCIDENT_REFERENCE",
             )
         )
         score += 3
+
+    # --- R7: shared source-record provenance (procedural, never incident) ----
+    shared_source = bool(
+        a.source_record_ref
+        and b.source_record_ref
+        and a.source_record_ref == b.source_record_ref
+    )
+    if shared_source:
+        fired.append("R7_SHARED_SOURCE_RECORD_PROVENANCE")
+        support.append(
+            _ev(
+                "R7_SHARED_SOURCE_RECORD_PROVENANCE",
+                rule_version,
+                f"Both case records were logged from the same intake source record "
+                f"{a.source_record_ref}. This establishes provenance (a procedural link "
+                "between records) - it is NOT incident identity and never by itself "
+                "supports a same-incident recommendation.",
+                weight=0,
+                evidence_type="SOURCE_RECORD_PROVENANCE",
+            )
+        )
 
     # --- R2: shared proceeding reference (medium) ---------------------------
     shared_proc = a.proceeding_references & b.proceeding_references
@@ -138,6 +168,7 @@ def evaluate_pair(
                 rule_version,
                 f"Both cases cite the same proceeding reference(s): {sorted(shared_proc)}.",
                 weight=2,
+                evidence_type="PROCEEDING_REFERENCE",
             )
         )
         score += 2
@@ -153,6 +184,7 @@ def evaluate_pair(
                     rule_version,
                     f"Incident dates are within {delta} day(s) of each other.",
                     weight=1,
+                    evidence_type="DATE_COMPATIBILITY",
                 )
             )
             score += 1
@@ -162,6 +194,7 @@ def evaluate_pair(
                     "R3_INCIDENT_DATE_COMPATIBILITY",
                     rule_version,
                     f"Incident dates differ by {delta} days (beyond {DATE_CONFLICT_WINDOW_DAYS}-day window).",
+                    evidence_type="DATE_COMPATIBILITY",
                 )
             )
             score -= 2
@@ -175,6 +208,7 @@ def evaluate_pair(
                 rule_version,
                 "Both cases cite incident references but share none "
                 f"({sorted(a.incident_references)} vs {sorted(b.incident_references)}).",
+                evidence_type="INCIDENT_REFERENCE",
             )
         )
         score -= 2
@@ -190,6 +224,7 @@ def evaluate_pair(
                 f"Same category ({a.category}) with consistent incident details "
                 f"(token overlap {sim:.2f}). Corroborating only - not sufficient alone.",
                 weight=1,
+                evidence_type="TEXT_CORROBORATION",
             )
         )
         score += 1
@@ -219,25 +254,31 @@ def evaluate_pair(
             }
         )
 
-    # --- R4 outcome ----------------------------------------------------------
-    if r4_hit and not shared_inc and not shared_proc:
-        fired.append("R4_EXPLICIT_CASE_CROSS_REFERENCE")
-        support.append(
-            _ev(
-                "R4_EXPLICIT_CASE_CROSS_REFERENCE",
-                rule_version,
-                "One case record explicitly references the other case ID "
-                "(procedural continuation / appeal pattern).",
-                weight=1,
+    # --- procedural-link outcome (R4 / R7) -----------------------------------
+    # Explicit case cross-references or shared intake provenance establish a
+    # procedural relationship between records - never, by themselves, a
+    # same-incident one. If stronger incident evidence (R1/R2) is present, the
+    # same-incident decision table below governs instead.
+    if (r4_hit or shared_source) and not shared_inc and not shared_proc:
+        if r4_hit:
+            fired.append("R4_EXPLICIT_CASE_CROSS_REFERENCE")
+            support.append(
+                _ev(
+                    "R4_EXPLICIT_CASE_CROSS_REFERENCE",
+                    rule_version,
+                    "One case record explicitly references the other case ID "
+                    "(procedural continuation / appeal pattern).",
+                    weight=1,
+                    evidence_type="CASE_CROSS_REFERENCE",
+                )
             )
-        )
         return PairAssessment(
             relationship_type=RelationshipType.PROCEDURAL_LINK,
             supporting_evidence=support,
             conflicting_evidence=conflicts,
             missing_evidence=missing,
             rules_fired=fired,
-            score=score or 1,
+            score=score or (1 if r4_hit else None),
         )
 
     # --- decision table ------------------------------------------------------

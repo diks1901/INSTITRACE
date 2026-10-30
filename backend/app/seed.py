@@ -24,6 +24,7 @@ from .clock import now, today
 from .config import get_settings
 from .database import Base, SessionLocal, engine
 from .models import (
+    AlertConditionState,
     AlertStatus,
     AlertType,
     AssessmentStatus,
@@ -107,8 +108,9 @@ def _attach_history(db: Session, case: ComplaintCase, entries: list[tuple[str, s
 
 def seed_demo(db: Session, reset: bool = False) -> dict:
     if reset:
-        for model in (CoordinationAlert, RelationshipAssessment, TransferRecord,
-                      CaseAction, AuditEvent, ComplaintCase, Institution, Bureau, DemoUser):
+        for model in (AlertConditionState, CoordinationAlert, RelationshipAssessment,
+                      TransferRecord, CaseAction, AuditEvent, ComplaintCase,
+                      Institution, Bureau, DemoUser):
             db.query(model).delete(synchronize_session=False)
         db.commit()
 

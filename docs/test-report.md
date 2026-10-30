@@ -11,7 +11,7 @@ pgserver). All results below are actual outputs; nothing is fabricated or inferr
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 ```
 
-**Result: 50 passed, 0 failed** (actual run: `50 passed, 3 warnings in 1.35s`)
+**Result: 63 passed, 0 failed** (actual run: `63 passed, 3 warnings in 1.54s`)
 
 ## Backend — pytest (PostgreSQL 16.2)
 
@@ -26,7 +26,7 @@ pytest tests/ -q
 `postgresql+psycopg2://postgres:postgres@localhost:5432/institrace_test` works the same way.
 `psycopg2-binary` must be installed for PostgreSQL runs.)
 
-**Result: 50 passed, 0 failed** (actual run: `50 passed, 3 warnings in 1.63s`)
+**Result: 63 passed, 0 failed** (actual run: `63 passed, 3 warnings in 2.41s`)
 
 PostgreSQL verification also included: `alembic upgrade head` on a fresh PG database (pass),
 seed load producing identical fixture counts (15 institutions / 40 cases / 36 assessments /
@@ -38,7 +38,9 @@ Suite breakdown (by file):
 
 | Suite | Tests | Coverage highlights |
 | --- | --- | --- |
-| `test_matching.py` | 9 | Scenarios A–E; text-similarity guard; duplicate-free recompute; human-decision preservation; rule versioning; self-pair rejection |
+| `test_matching.py` | 14 | Scenarios A–E; text-similarity guard; duplicate-free recompute; human-decision preservation; rule versioning; self-pair rejection; **v1.1.0 provenance semantics**: shared `source_record_ref` is procedural-only (never PSI), non-matching source refs prove nothing, shared incident refs still PSI, institution identity never assesses an incident |
+| `test_alert_lifecycle.py` | 3 | **Alert occurrence lifecycle (FIX 1)**: coordination and deadline recurrence — condition gone ⇒ system `(auto)` resolves ⇒ condition back ⇒ NEW occurrence (history intact) ⇒ reruns create no duplicates; human-resolved-while-active suppression until the condition next goes absent |
+| `test_evidence_review.py` | 5 | **Evidence-versioned review (FIX 3)**: snapshot+hash pinned at review; unchanged evidence ⇒ nothing flagged; evidence change after CONFIRMED / REJECTED / DEFERRED ⇒ decision preserved + `requires_rereview` + `ASSESSMENT_EVIDENCE_CHANGED` audit; re-review re-pins; hash determinism |
 | `test_workflow.py` | 12 | creation+history, duplicate IDs, status machine incl. terminal DISPOSED, transfer preserves history+audit, escalation, review persistence, invalid review rejected, resolved-alert traceability, role enforcement, filters |
 | `test_deadlines.py` | 6 | approaching/overdue/disposed-deadline/escalation logic on a pinned clock; duplicate-free evaluation; auto-resolve on disposal; pending reminder |
 | `test_dashboard_reports.py` | 9 | dashboard totals = live DB counts; bureau workload = DB; ageing buckets cover all active cases; disposal rate math; region filter; CSV structure+filters; CSV injection guard; overlap report separation of alert vs assessment dimensions |
@@ -65,6 +67,50 @@ Frontend tests cover: API client auth/error/401-session handling, query building
 badge labeling (recommendation vs decision distinction, audit-pass regression guards on alert
 badge classes/lifecycle states), demo-data labeling, empty states, InstitutionForm client
 validation blocking submission, and the five mandated statuses all having labels.
+
+## Hunter-pass outcomes (2026-10-30, second audit round)
+
+Three confirmed-in-code defects were fixed and regression-tested end-to-end:
+
+1. **Resolved alert conditions could never recur (alert service upsert).** Replaced dedupe-key
+   upsert with an occurrence lifecycle: `alert_condition_state` tracks condition presence, a
+   recurring condition opens a NEW alert occurrence (`coordination_alerts` unique on
+   `(logical_key, occurrence)`), absent conditions are resolved `system (auto)` with history
+   retained, and human-resolved-while-active suppresses silent respawning. Verified live
+   (Scenario G legs G1–G5 below) and by `test_alert_lifecycle.py`.
+2. **`source_record_ref` was treated as an incident reference (R1).** Engine v1.1.0 separates
+   provenance (`R7_SHARED_SOURCE_RECORD_PROVENANCE`, typed evidence, weight 0 — procedural
+   link only) from incident references. Verified by the new engine tests in
+   `test_matching.py`.
+3. **Human decisions were pinned to nothing.** Assessments now record `evidence_hash`,
+   `reviewed_evidence_hash` and a full `evidence_snapshot` at decision time; a material
+   evidence change after CONFIRMED/REJECTED/DEFERRED sets `requires_rereview` and writes an
+   `ASSESSMENT_EVIDENCE_CHANGED` audit event, while the decision and its original snapshot are
+   preserved. Exposed in the API (`requires_rereview`, snapshot) and flagged in the UI.
+   Verified by `test_evidence_review.py`.
+
+Both defects also required a schema migration: `a2b7c9d1e001` (alembic, batch-safe for SQLite
+and portable to PostgreSQL; verified on both). Rules/behaviours: rule engine `1.1.0`.
+
+### Live scenario verification (through the Vite proxy at :5173, admin role, 2026-10-30)
+
+```
+PASS - A: shared incident-ref across bureaus -> PSI + coordination alert with non-duplicate wording
+PASS - B: distinct incident refs -> NO_RELATIONSHIP_ESTABLISHED with recorded conflicts
+PASS - C: sparse records -> INSUFFICIENT_EVIDENCE with missing-inventory; missing != negative
+PASS - D: same-bureau PSI, and NO cross-bureau coordination alert for that institution alone
+PASS - E: different institutions are never assessed by the engine
+PASS - F: recompute preserves human CONFIRMED decision + reviewer + rationale; no rereview flag (unchanged evidence)
+PASS - F2: reviewed assessment exposes pinned evidence snapshot + hash through the API
+PASS - G1: deadline moved to future -> OVERDUE alert auto-resolved by system (not deleted)
+PASS - G2: condition returns -> NEW active alert occurrence 2; occurrence-1 history row intact
+PASS - G3: repeated refreshes create NO duplicate active alerts
+PASS - G4: disposing the pair auto-resolves the coordination alert (system (auto)), row retained
+PASS - G5: DISPOSED -> active is REJECTED by the state machine (422) - no silent reopening
+```
+
+(Same checks pass on the fixed SQLite seed: 15 institutions / 40 cases / 36 assessments /
+27 alerts.)
 
 ## Audit-pass outcomes (2026-10-30)
 

@@ -2,9 +2,11 @@
 
 
 def test_health_and_meta(client):
+    from app.config import get_settings
+
     assert client.get("/api/v1/health").json()["status"] == "ok"
     meta = client.get("/api/v1/meta").json()
-    assert meta["rule_engine_version"] == "1.0.0"
+    assert meta["rule_engine_version"] == get_settings().rule_engine_version
     # mode must truthfully reflect the database under test (sqlite or postgresql)
     from .conftest import _TEST_DB_URL
 

@@ -16,7 +16,7 @@ flowchart LR
     subgraph Backend["FastAPI :8000"]
         R[Routers<br/>health · dashboard · institutions · cases<br/>relationships · alerts · reports · audit · admin]
         S[Services<br/>case workflow · alert evaluation · dashboard · reports · audit]
-        ME[Matching engine<br/>deterministic explainable rules v1.0.0]
+        ME[Matching engine<br/>deterministic explainable rules v1.1.0]
         SEC[Demo authN/Z<br/>PBKDF2 passwords · HMAC tokens · role guards]
         ORM[SQLAlchemy 2 ORM]
     end

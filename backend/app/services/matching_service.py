@@ -24,6 +24,26 @@ from ..models import (
 from ..schemas import RecomputeResult
 from .audit import record_audit
 
+import hashlib
+import json
+
+
+def compute_evidence_hash(relationship_type, supporting, conflicting, missing, score) -> str:
+    """Deterministic fingerprint of the material evidence behind an assessment.
+    Used to pin human decisions to the exact evidence the reviewer saw."""
+    payload = json.dumps(
+        {
+            "relationship_type": str(relationship_type.value if hasattr(relationship_type, "value") else relationship_type),
+            "supporting": supporting,
+            "conflicting": conflicting,
+            "missing": missing,
+            "score": score,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
 
 def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
     settings = get_settings()
@@ -47,6 +67,10 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
             if result is None:  # different institutions - never assessed
                 continue
             key = engine.pair_key(case_a.case_id, case_b.case_id)
+            new_hash = compute_evidence_hash(
+                result.relationship_type, result.supporting_evidence,
+                result.conflicting_evidence, result.missing_evidence, result.score,
+            )
             row = existing.get(key)
             if row is None:
                 row = RelationshipAssessment(
@@ -61,6 +85,7 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
                     rules_fired=result.rules_fired,
                     score=result.score,
                     rule_version=version,
+                    evidence_hash=new_hash,
                     status=AssessmentStatus.PENDING_REVIEW,
                     created_at=now_dt,
                     last_recomputed_at=now_dt,
@@ -94,6 +119,8 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
                                     "human review - no records are merged or changed."
                                 ),
                                 dedupe_key=dedupe,
+                                logical_key=dedupe,
+                                occurrence=1,
                                 created_at=now_dt,
                             )
                         )
@@ -118,6 +145,15 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
                 )
                 if changed:
                     before = {"type": row.relationship_type.value, "rule_version": row.rule_version}
+                    # Evidence-version pinning (FIX 3): if a human already
+                    # decided and the material evidence changed since their
+                    # review, keep the decision visible but flag it OUTDATED -
+                    # never display an old decision as if it covers new evidence.
+                    evidence_changed = (
+                        was_reviewed
+                        and row.reviewed_evidence_hash is not None
+                        and new_hash != row.reviewed_evidence_hash
+                    )
                     row.relationship_type = result.relationship_type
                     row.supporting_evidence = result.supporting_evidence
                     row.conflicting_evidence = result.conflicting_evidence
@@ -125,6 +161,7 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
                     row.rules_fired = result.rules_fired
                     row.score = result.score
                     row.rule_version = version
+                    row.evidence_hash = new_hash
                     updated += 1
                     if was_reviewed:
                         record_audit(
@@ -134,6 +171,16 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
                             before=before,
                             after={"type": row.relationship_type.value, "rule_version": version},
                         )
+                        if evidence_changed:
+                            row.requires_rereview = True
+                            record_audit(
+                                db, actor=actor, event_type="ASSESSMENT_EVIDENCE_CHANGED",
+                                entity_type="relationship_assessment", entity_id=str(row.id),
+                                summary="Evidence changed after human decision; re-review required",
+                                meta={"reviewed_evidence_hash": row.reviewed_evidence_hash,
+                                      "current_evidence_hash": new_hash,
+                                      "preserved_decision": row.status.value},
+                            )
                 row.last_recomputed_at = now_dt
 
     db.commit()
@@ -168,6 +215,21 @@ def review_assessment(db: Session, assessment_id: int, *, decision: AssessmentSt
     row.reviewer_identity = reviewer
     row.reviewer_rationale = rationale
     row.reviewed_at = now()
+    # Pin the decision to the exact evidence the reviewer saw (FIX 3).
+    row.evidence_snapshot = {
+        "relationship_type": row.relationship_type.value,
+        "supporting_evidence": row.supporting_evidence,
+        "conflicting_evidence": row.conflicting_evidence,
+        "missing_evidence": row.missing_evidence,
+        "score": row.score,
+        "rule_version": row.rule_version,
+        "reviewed_at": row.reviewed_at.isoformat(),
+    }
+    row.reviewed_evidence_hash = row.evidence_hash or compute_evidence_hash(
+        row.relationship_type, row.supporting_evidence, row.conflicting_evidence,
+        row.missing_evidence, row.score,
+    )
+    row.requires_rereview = False
     record_audit(
         db, actor=reviewer, event_type="ASSESSMENT_REVIEWED",
         entity_type="relationship_assessment", entity_id=str(row.id),

@@ -166,6 +166,8 @@ table.data tr:hover td { background: #f7fafc; }
 .badge.review-CONFIRMED { background: #e3f5ea; color: #1e7d4f; }
 .badge.review-REJECTED { background: #eef1f5; color: #44546a; }
 .badge.review-DEFERRED { background: #f0eafb; color: #5b48a4; }
+.badge.occurrence { background: #fff3d6; color: #8a5a00; border: 1px solid #efd9a0; }
+.badge.rereview { background: var(--bad-bg); color: var(--bad); border: 1px dashed #e2958c; }
 .badge.rel-POTENTIAL_SAME_INCIDENT { background: var(--bad-bg); color: var(--bad); }
 .badge.rel-PROCEDURAL_LINK { background: #e3f0fd; color: #14508a; }
 .badge.rel-NO_RELATIONSHIP_ESTABLISHED { background: #eef1f5; color: #44546a; }

@@ -6,6 +6,8 @@ import { useAuth } from '../auth/AuthContext';
 import {
   AlertStatusBadge,
   AlertTypeBadge,
+  OccurrenceBadge,
+  RereviewBadge,
   EmptyState,
   ErrorState,
   Loading,
@@ -206,7 +208,8 @@ function AlertsTab({
         <div className="card" key={a.id}>
           <div className="flex-between">
             <div>
-              <AlertTypeBadge type={a.alert_type} /> <AlertStatusBadge status={a.status} />
+              <AlertTypeBadge type={a.alert_type} /> <AlertStatusBadge status={a.status} />{' '}
+              <OccurrenceBadge occurrence={a.occurrence} />
               <h4 style={{ margin: '8px 0 6px' }}>{a.title}</h4>
             </div>
             {canAct && a.status === 'OPEN' && !showResolved && (
@@ -386,15 +389,28 @@ function AssessmentsTab({
           <div className="flex-between">
             <div>
               <RelBadge type={a.relationship_type} /> <ReviewBadge status={a.status} />{' '}
+              {a.requires_rereview && <RereviewBadge />}{' '}
               <span className="small mono">rules v{a.rule_version}</span>
               {a.score !== null && a.score !== undefined && (
                 <span className="small"> · evidence score {a.score} (heuristic, not a probability)</span>
               )}
             </div>
-            {canReview && a.status === 'PENDING_REVIEW' && (
-              <button onClick={() => setReviewTarget(a)}>Review…</button>
+            {canReview && (a.status === 'PENDING_REVIEW' || a.requires_rereview) && (
+              <button onClick={() => setReviewTarget(a)}>
+                {a.requires_rereview && a.status !== 'PENDING_REVIEW' ? 'Re-review…' : 'Review…'}
+              </button>
             )}
           </div>
+          {a.requires_rereview && a.evidence_snapshot && (
+            <div className="notice warn small" style={{ margin: '8px 0' }}>
+              The {a.status} decision by{' '}
+              <strong>{a.reviewer_identity ?? 'a reviewer'}</strong> was recorded against earlier
+              evidence (recommended: <RelBadge type={a.evidence_snapshot.relationship_type} />
+              ). The underlying complaints were updated and re-analysis changed the evidence.
+              The preserved decision is shown for history only and does not cover the current
+              evidence — please re-review.
+            </div>
+          )}
           <p style={{ margin: '10px 0 6px' }}>
             <span className="chip">
               {a.source_case ? (

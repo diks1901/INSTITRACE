@@ -244,6 +244,11 @@ class RelationshipAssessmentOut(BaseModel):
     rules_fired: list
     score: float | None
     rule_version: str
+    # evidence-versioned review fields (pinned to what the reviewer saw)
+    evidence_hash: str | None = None
+    reviewed_evidence_hash: str | None = None
+    evidence_snapshot: dict | None = None
+    requires_rereview: bool = False
     status: AssessmentStatus
     reviewer_identity: str | None
     reviewer_rationale: str | None
@@ -273,6 +278,7 @@ class AlertOut(BaseModel):
     case_ids: list
     title: str
     description: str
+    occurrence: int = 1  # which recurrence of this condition this alert is
     status: AlertStatus
     acknowledged_by: str | None
     acknowledged_at: datetime | None

@@ -32,7 +32,10 @@ class Settings(BaseSettings):
 
     # Rule engine version - bumped whenever matching rules change so that the
     # version recorded on each assessment reflects the rules that produced it.
-    rule_engine_version: str = "1.0.0"
+    # 1.1.0: R1 restricted to explicit incident references; added
+    # R7_SHARED_SOURCE_RECORD_PROVENANCE (provenance -> procedural link only);
+    # evidence items are now typed.
+    rule_engine_version: str = "1.1.0"
 
     app_version: str = "0.1.0"
 

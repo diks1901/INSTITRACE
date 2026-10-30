@@ -96,6 +96,10 @@ erDiagram
         json rules_fired
         int score "heuristic agreement count - NOT a probability"
         string rule_version
+        string evidence_hash "sha256 fingerprint of current evidence"
+        string reviewed_evidence_hash "hash the human decision was pinned to"
+        json evidence_snapshot "exact evidence the reviewer saw"
+        bool requires_rereview "decision predates current evidence"
         string status "PENDING_REVIEW|CONFIRMED|REJECTED|DEFERRED"
         string reviewer_identity
         text reviewer_rationale
@@ -110,14 +114,23 @@ erDiagram
         json case_ids
         string title
         text description
-        string dedupe_key UK "prevents duplicates on recompute"
+        string logical_key "stable condition identity"
+        int occurrence "Nth recurrence of the condition"
+        string dedupe_key "logical key (occ 1) or key#occN"
         string status "OPEN|ACKNOWLEDGED|RESOLVED"
         string acknowledged_by
         datetime acknowledged_at
-        string resolved_by
+        string resolved_by "incl. 'system (auto)' when condition disappears"
         datetime resolved_at
         text resolution_note
         datetime created_at
+    }
+    alert_condition_state {
+        string logical_key PK
+        string alert_type
+        bool present "condition seen at last evaluation"
+        int occurrences "how often the condition has (re)appeared"
+        datetime updated_at
     }
     audit_events {
         int id PK
@@ -146,7 +159,9 @@ erDiagram
 ## Constraints and indexes
 
 - **Uniqueness**: `institutions.permanent_id`, `complaint_cases.case_id`,
-  `demo_users.username`, `relationship_assessments.pair_key`, `coordination_alerts.dedupe_key`.
+  `demo_users.username`, `relationship_assessments.pair_key`,
+  `coordination_alerts (logical_key, occurrence)` (one row per condition occurrence;
+  `dedupe_key` retains its legacy value for occurrence 1).
 - **Foreign keys**: cases → institutions/bureaus; histories → cases; assessments → both cases
   and institution; alerts → institution. Case history and transfers cascade with their case.
 - **Indexes**: `permanent_id`, `case_id`, `institution_id`, `bureau_id`, `status`,

@@ -242,6 +242,14 @@ class RelationshipAssessment(Base):
     rules_fired: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     score: Mapped[float | None] = mapped_column(Integer)  # heuristic agreement count, NOT a probability
     rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Evidence-versioned human review: the reviewer's decision is pinned to the
+    # exact evidence they saw. If recomputation materially changes the evidence
+    # (hash mismatch), the decision is PRESERVED but flagged requires_rereview
+    # instead of being silently displayed as if it applies to new evidence.
+    evidence_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    reviewed_evidence_hash: Mapped[str | None] = mapped_column(String(64))
+    evidence_snapshot: Mapped[dict | None] = mapped_column(JSON)
+    requires_rereview: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[AssessmentStatus] = mapped_column(
         Enum(AssessmentStatus, native_enum=False),
         nullable=False,
@@ -260,13 +268,21 @@ class RelationshipAssessment(Base):
 
 
 class CoordinationAlert(Base):
-    """In-app alert. Cross-bureau alerts are institution-level signals and are
-    deliberately NOT the same thing as a same-incident assessment."""
+    """In-app alert with an occurrence lifecycle.
+
+    `logical_key` identifies the recurring CONDITION (e.g. cross-bureau split
+    for one institution, a case's overdue state for a given expected date).
+    `occurrence` numbers successive activations of that condition. Resolved
+    rows are immutable history: a recurring condition opens occurrence N+1 as
+    a NEW active alert while all previous rows stay intact. At most one
+    active (OPEN/ACKNOWLEDGED) alert exists per logical key at any time.
+    """
 
     __tablename__ = "coordination_alerts"
     __table_args__ = (
-        UniqueConstraint("dedupe_key", name="uq_alert_dedupe"),
+        UniqueConstraint("logical_key", "occurrence", name="uq_alert_occurrence"),
         Index("ix_alerts_type_status", "alert_type", "status"),
+        Index("ix_alerts_logical_key", "logical_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -277,6 +293,10 @@ class CoordinationAlert(Base):
     case_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    # logical_key stays stable across occurrences; dedupe_key additionally
+    # carries the occurrence number so every stored alert row is unique.
+    logical_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    occurrence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[AlertStatus] = mapped_column(
         Enum(AlertStatus, native_enum=False), nullable=False, default=AlertStatus.OPEN, index=True
@@ -289,6 +309,24 @@ class CoordinationAlert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=clock_now, nullable=False)
 
     institution: Mapped[Institution | None] = relationship()
+
+
+class AlertConditionState(Base):
+    """Persisted presence state of each alert logical key across evaluations.
+
+    Tracks whether the condition was present at the last evaluation, so that:
+      * a condition that DISAPPEARED and LATER RETURNS opens a new occurrence;
+      * a human-resolved alert while the condition persisted is not instantly
+        respawned by the next recomputation (the resolution stands until the
+        condition has been observed absent at least once)."""
+
+    __tablename__ = "alert_condition_state"
+
+    logical_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    present: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    occurrences: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=clock_now, nullable=False)
 
 
 class AuditEvent(Base):

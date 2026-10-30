@@ -44,6 +44,15 @@ click **Review… → Defer — need more information**, type *"Need original co
 Then click **↻ Recompute rules & alerts** and point out: *"0 new assessments, 0 duplicate
 alerts, 3 human decisions preserved."*
 
+## Step 6b (optional depth) — Evidence-versioned review (~30 s)
+
+On any CONFIRMED assessment, edit the underlying complaint description (officer login) so the
+cited incident changes, then recompute. The review badge now reads **"Outdated decision —
+re-review"**: the preserved decision is shown alongside the *new* evidence, with the reviewer's
+original snapshot kept on the record and in the audit trail. Record a fresh decision to clear
+the flag. *"Decisions are never silently erased and never presented as proof for evidence the
+reviewer never saw."*
+
 ## Step 7 — Accountability (~45 s)
 
 Open **DEMO-CASE-013** (PGRC, approaching deadline). Transfer it to EVC with officer + reason.
@@ -58,6 +67,15 @@ timeline gained a TRANSFER entry. Then **Audit Trail** → filter `DEMO-CASE-013
 Acknowledge one alert; resolve one with a note. Then **Reports & Exports** → *Bureau-wise
 workload* → **Export CSV**, and *Pending-case ageing*. Mention: disposed cases with past
 deadlines correctly produce no overdue alert (DEMO-CASE-014).
+
+## Step 8b (optional depth) — Alert recurrence lifecycle (~30 s)
+
+On **Deadline & Ops Alerts**, move DEMO-CASE-012's expected disposal date into the future
+(case edit) and click the alert refresh: the OVERDUE alert is resolved **by system (auto)**
+and stays visible in **Resolved history**. Move the date back to the past and refresh: a
+**new** alert appears with a **"Recurrence #2"** badge — occurrence 1 remains intact in
+history. Refresh again: no duplicates. *"When a problem comes back, the duty team gets a fresh
+alert — never a silently resurrected one, never a missing one."*
 
 ## Closing line
 
