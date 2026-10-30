@@ -210,6 +210,93 @@ def test_returning_qualifying_evidence_opens_next_occurrence(db, probe_pair):
     assert state.present is True and state.occurrences == 2
 
 
+# 6. evidence changes but recommendation remains PSI -> alert tracks current version
+def test_evidence_change_while_psi_keeps_alert_consistent(db, probe_pair):
+    inst, a, b = probe_pair
+    a.description, a.subject = RICH_A, "Incident INC-2077-0001 at hostel block"
+    b.description, b.subject = RICH_B, "Same incident INC-2077-0001 follow-up"
+    db.commit()
+    matching_service.recompute_all(db, actor="pytest")
+    row = _assessment(db)
+    alert = _active(db)[0]
+    first_hash = alert.evidence_hash
+    first_id, first_occ = alert.id, alert.occurrence
+
+    b.description = RICH_B_V2  # still qualifies, materially changed evidence
+    db.commit()
+    r = matching_service.recompute_all(db, actor="pytest")
+    db.refresh(row)
+    assert r.alerts_created == 0, "no new alert while still qualifying"
+    assert row.relationship_type == RelationshipType.POTENTIAL_SAME_INCIDENT
+    alerts = _psi_alerts(db)
+    assert len(alerts) == 1 and len(_active(db)) == 1, "single occurrence, still active"
+    cur = alerts[0]
+    assert cur.id == first_id and cur.occurrence == first_occ, "same row, no new occurrence"
+    assert cur.evidence_hash == row.evidence_hash and cur.evidence_hash != first_hash, (
+        "alert pinned to the CURRENT evidence version")
+    assert cur.assessment_id == row.id
+
+
+# 7b. potential -> insufficient evidence -> alert resolved with reason, history kept
+def test_potential_pair_becoming_insufficient_resolves_alert(db, probe_pair):
+    inst, a, b = probe_pair
+    a.description, a.subject = RICH_A, "Incident INC-2077-0001 at hostel block"
+    b.description, b.subject = RICH_B, "Same incident INC-2077-0001 follow-up"
+    db.commit()
+    matching_service.recompute_all(db, actor="pytest")
+    assert len(_active(db)) == 1
+
+    # supporting incident reference removed; text back to thin/disjoint
+    b.description, b.subject = "Fee receipt pending.", "Grievance counter filing"
+    db.commit()
+    matching_service.recompute_all(db, actor="pytest")
+    row = _assessment(db)
+    assert row.relationship_type == RelationshipType.INSUFFICIENT_EVIDENCE
+    alerts = _psi_alerts(db)
+    assert len(alerts) == 1, "historical occurrence preserved, not deleted"
+    assert alerts[0].status == AlertStatus.RESOLVED
+    assert alerts[0].resolved_by == "system (auto)"
+    note = alerts[0].resolution_note or ""
+    assert "INSUFFICIENT_EVIDENCE" in note, "resolution records WHY"
+    assert _active(db) == []
+
+
+# 8. cross-bureau coordination alerts are untouched by the PSI lifecycle
+def test_xbureau_alerts_independent_of_psi_lifecycle(db, probe_pair):
+    from app.services import alert_service
+
+    inst, a, b = probe_pair
+    # probe institution has active cases in RB + PGRC -> coordination alert
+    first = alert_service.evaluate_alerts(db)
+    xa = db.scalars(select(CoordinationAlert).where(
+        CoordinationAlert.institution_id == inst.id,
+        CoordinationAlert.alert_type == AlertType.CROSS_BUREAU_COORDINATION)).all()
+    assert len(xa) == 1
+    xb = xa[0]
+    xb_id, xb_status, xb_occ = xb.id, xb.status, xb.occurrence
+    assert xb.assessment_id is None and xb.evidence_hash is None, (
+        "operational alert is not pinned to an assessment")
+    assert xb.logical_key.startswith("XBUREAU:")
+
+    # PSI qualifies, then stops qualifying, then qualifies again
+    a.description, a.subject = RICH_A, "Incident INC-2077-0001 at hostel block"
+    b.description, b.subject = RICH_B, "Same incident INC-2077-0001 follow-up"
+    db.commit(); matching_service.recompute_all(db, actor="pytest")
+    assert len(_active(db)) == 1
+    b.description, b.subject = RICH_B_OTHER, "Different incident INC-2077-0002"
+    db.commit(); matching_service.recompute_all(db, actor="pytest")
+    assert _active(db) == []
+    b.description, b.subject = RICH_B, "Same incident INC-2077-0001 follow-up"
+    db.commit(); matching_service.recompute_all(db, actor="pytest")
+
+    db.refresh(xb)
+    assert xb.id == xb_id and xb.occurrence == xb_occ, "XBUREAU row never replaced"
+    assert xb.status == xb_status, "XBUREAU status untouched by PSI transitions"
+    psi = _psi_alerts(db)
+    assert [x.occurrence for x in psi] == [1, 2], "PSI lifecycle still progressed"
+    assert not {a.logical_key for a in psi} & {xb.logical_key}, "key spaces disjoint"
+
+
 # 5. human review + review history survive the full alert lifecycle
 def test_review_history_and_decisions_survive_alert_lifecycle(db, probe_pair):
     inst, a, b = probe_pair

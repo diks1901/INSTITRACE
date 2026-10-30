@@ -11,7 +11,7 @@ pgserver). All results below are actual outputs; nothing is fabricated or inferr
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 ```
 
-**Result: 76 passed, 0 failed** (actual run: `76 passed, 3 warnings in 3.67s`; all 3 warnings are
+**Result: 83 passed, 0 failed** (actual run: `83 passed, 3 warnings in 4.02s`; all 3 warnings are
 third-party deprecation notices from the pinned FastAPI/Starlette stack — zero originate from
 project code)
 
@@ -28,7 +28,7 @@ pytest tests/ -q
 `postgresql+psycopg2://postgres:postgres@localhost:5432/institrace_test` works the same way.
 `psycopg2-binary` must be installed for PostgreSQL runs.)
 
-**Result: 76 passed, 0 failed** (actual run: `76 passed, 3 warnings in 4.40s`; same third-party
+**Result: 83 passed, 0 failed** (actual run: `83 passed, 3 warnings in 5.32s`; same third-party
 deprecation notices as the SQLite run)
 
 PostgreSQL verification also included: `alembic upgrade head` on a fresh PG database (pass),
@@ -45,7 +45,8 @@ Suite breakdown (by file):
 | `test_alert_lifecycle.py` | 3 | **Alert occurrence lifecycle (FIX 1)**: coordination and deadline recurrence — condition gone ⇒ system `(auto)` resolves ⇒ condition back ⇒ NEW occurrence (history intact) ⇒ reruns create no duplicates; human-resolved-while-active suppression until the condition next goes absent |
 | `test_evidence_review.py` | 5 | **Evidence-versioned review**: snapshot+hash pinned at review; unchanged evidence ⇒ nothing flagged; evidence change after CONFIRMED / REJECTED / DEFERRED ⇒ decision preserved + `requires_rereview` + `ASSESSMENT_EVIDENCE_CHANGED` audit; re-review re-pins; hash determinism |
 | `test_migration_upgrade.py` | 4 | **Legacy migration (FIX 1)**: legacy DB at `69e0eedb34ac` with a RESOLVED alert → upgrade → recompute: no `IntegrityError`, occurrence 2 opened, occ-1 history preserved; ACTIVE legacy alert reused (no duplicate); legacy `system (auto)`-resolved recurrence; fresh-install `upgrade head` + seed stability (incl. review-history rows) |
-| `test_psi_alert_lifecycle.py` | 5 | **PSI-alert evidence lifecycle (final fix)** — below; all 5 scenarios |
+| `test_psi_alert_lifecycle.py` | 8 | **PSI-alert evidence lifecycle (final fix)** — all 10 mandated scenarios except the config ones: insufficient→PSI creation, PSI→INSUFFICIENT resolution, PSI→NO_RELATIONSHIP resolution, no-duplicate recomputation, re-qualification→new occurrence, evidence-change-still-PSI consistency, full review-history survival, XBUREAU independence |
+| `test_config_env.py` | 4 | **FIX 1 config audit**: `.env.example` ships the actual current rule-engine version; README-style `copy .env.example .env` fresh install loads 1.1.0 through real Settings machinery; loaded version drives every evidence fingerprint; no committed `.env` shadows the template |
 | `test_review_history.py` | 4 | **Append-only review history (FIX 2) + version fingerprinting (FIX 3)**: full lifecycle initial-confirm → evidence change → re-review with different decision; both decisions remain API-accessible with their own snapshots/hashes; rule-version bump with identical evidence flags re-review; seed decisions present in history; hash includes `rule_version` |
 | `test_workflow.py` | 13 | creation+history, duplicate IDs, status machine incl. terminal DISPOSED, transfer preserves history+audit, escalation, review persistence, invalid review rejected, resolved-alert traceability, role enforcement, filters |
 | `test_deadlines.py` | 7 | approaching/overdue/disposed-deadline/escalation logic on a pinned clock; duplicate-free evaluation; auto-resolve on disposal; pending reminder |
@@ -93,7 +94,8 @@ documentation claim. All fixed and regression-tested; no features added, no test
    service created (or failed to create) the "possible same incident" alert only inside the
    *create* branch of the pair loop, so a pair that later qualified — or later stopped
    qualifying — kept a stale alert state. The service now runs an alert lifecycle for every
-   pair on every recompute (`tests/test_psi_alert_lifecycle.py`, 5 mandated scenarios):
+   pair on every recompute (`tests/test_psi_alert_lifecycle.py`, 8 tests covering the full
+   mandated lifecycle):
    - assessment transitions INSUFFICIENT_EVIDENCE / NO_RELATIONSHIP_ESTABLISHED → PSI ⇒ alert
      created (linked to the assessment id + current evidence hash);
    - a pair losing its supporting evidence ⇒ the still-active alert is auto-resolved

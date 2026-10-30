@@ -113,7 +113,7 @@ Defaults ship for local convenience only; override via `INSTITRACE_DEMO_*` env v
 ### 5. Run tests and checks
 
 ```powershell
-# Backend tests (76 tests) - default SQLite
+# Backend tests (83 tests) - default SQLite
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 
 # Backend tests against PostgreSQL (after section 6; reuse an empty test database)
@@ -178,7 +178,7 @@ INSTITRACE/
 ├── backend/            FastAPI app, matching engine, services, alembic, pytest suite
 │   ├── app/            main.py, models.py, schemas.py, seed.py, matching/, services/, routers/
 │   ├── alembic/        migration environment + initial schema migration
-│   └── tests/          76 backend tests (matching, alert + PSI-alert lifecycles, evidence-versioned review,
+│   └── tests/          83 backend tests (matching, alert + PSI-alert lifecycles, env-config audit, evidence-versioned review,
 │                       review history, legacy-migration upgrades, workflow, deadlines,
 │                       reports, reliability)
 ├── frontend/           React + Vite + TypeScript SPA (pages/, components/, api/)
