@@ -57,7 +57,11 @@ flowchart LR
    holding is auto-resolved as `system (auto)`; a condition that *returns* reopens a NEW
    occurrence while the resolved history row remains; a human resolution while the condition
    persists suppresses silent respawning. Migrations backfill the state table for legacy
-   databases so upgraded installs never collide on occurrence 1.
+   databases so upgraded installs never collide on occurrence 1. The same lifecycle also governs
+   the *informational* `POTENTIAL_SAME_INCIDENT` alerts raised by the matching service: each is
+   linked to its assessment (`assessment_id`) and pinned to the evidence version
+   (`evidence_hash`) it was raised from, is auto-resolved when the pair stops qualifying, and
+   re-opens as a new occurrence if qualifying evidence returns.
 
 5. **Injectable clock**: all deadline logic reads `app.clock.now()`, so tests pin time and the
    behaviour is deterministic.

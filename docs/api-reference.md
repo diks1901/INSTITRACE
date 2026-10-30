@@ -74,7 +74,7 @@ All endpoints are versioned under `/api/v1`. Interactive docs (live Swagger UI) 
 
 | Method | Path | Role | Notes |
 | --- | --- | --- | --- |
-| GET | `/alerts?alert_type=&status=&institution_id=` | any | Cross-bureau, same-incident, reminder, deadline, overdue, escalation alerts |
+| GET | `/alerts?alert_type=&status=&institution_id=` | any | Cross-bureau, same-incident, reminder, deadline, overdue, escalation alerts — payload includes `assessment_id` + `evidence_hash` linking informational same-incident alerts to their assessment and evidence version (null for operational alerts) |
 | GET | `/alerts/{id}` | any | |
 | POST | `/alerts/{id}/acknowledge` | ADMIN, BUREAU_OFFICER, REVIEWER | OPEN → ACKNOWLEDGED |
 | POST | `/alerts/{id}/resolve` | ADMIN, BUREAU_OFFICER, REVIEWER | Requires resolution note; 422 if already resolved |

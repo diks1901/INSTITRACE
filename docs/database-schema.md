@@ -124,6 +124,8 @@ erDiagram
         string resolved_by "incl. 'system (auto)' when condition disappears"
         datetime resolved_at
         text resolution_note
+        int assessment_id FK "nullable — links informational PSI alerts to their assessment"
+        string evidence_hash "nullable — sha256 of the evidence version the alert was raised from"
         datetime created_at
     }
     alert_condition_state {

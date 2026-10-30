@@ -13,6 +13,7 @@ from ..clock import now
 from ..config import get_settings
 from ..matching import engine
 from ..models import (
+    AlertConditionState,
     AlertStatus,
     AlertType,
     AssessmentStatus,
@@ -52,6 +53,158 @@ def compute_evidence_hash(relationship_type, supporting, conflicting, missing, s
         default=str,
     )
     return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+
+def _psi_alert_lifecycle(
+    db: Session, *, qualifies: bool, key: str, row: RelationshipAssessment,
+    case_a: ComplaintCase, case_b: ComplaintCase, evidence_hash: str,
+    now_dt, actor: str,
+) -> bool:
+    """Evidence-version-aware lifecycle for informational same-incident alerts.
+
+    - qualifying pair, no active alert -> NEW occurrence created (links the
+      assessment and the exact evidence hash that triggered it)
+    - qualifying pair, active alert  -> reused; its evidence link is refreshed
+      if the evidence changed while the pair still qualifies
+    - non-qualifying pair, active alert -> resolved 'system (auto)' as stale;
+      the alert history row is preserved
+    - non-qualifying pair, no active alert -> nothing to do; condition state
+      is recorded absent so a later return opens the NEXT occurrence
+    Never confirms relationships, never merges cases, never erases review
+    history. Returns True when a new alert occurrence was created.
+    """
+    logical_key = f"PSI:{key}"
+    actives = db.scalars(
+        select(CoordinationAlert)
+        .where(
+            CoordinationAlert.alert_type == AlertType.POTENTIAL_SAME_INCIDENT,
+            CoordinationAlert.logical_key == logical_key,
+            CoordinationAlert.status != AlertStatus.RESOLVED,
+        )
+        .order_by(CoordinationAlert.occurrence.desc())
+    ).all()
+    active = actives[0] if actives else None
+    # belt-and-braces: keep at most one active informational alert per pair
+    for stale in actives[1:]:
+        stale.status = AlertStatus.RESOLVED
+        stale.resolved_at = now_dt
+        stale.resolved_by = "system (auto)"
+        stale.resolution_note = "Superseded duplicate of the same informational condition."
+
+    state = db.get(AlertConditionState, logical_key)
+    if qualifies:
+        if active is not None:
+            # Reuse the active alert; keep the evidence link current.
+            if active.assessment_id != row.id or (active.evidence_hash or "") != evidence_hash:
+                active.assessment_id = row.id
+                active.evidence_hash = evidence_hash
+                record_audit(
+                    db, actor=actor, event_type="PSI_ALERT_EVIDENCE_UPDATED",
+                    entity_type="coordination_alert", entity_id=str(active.id),
+                    summary="Same-incident informational alert evidence link refreshed",
+                    meta={"pair_key": key, "assessment_id": row.id,
+                          "evidence_hash": evidence_hash},
+                )
+            created = False
+        else:
+            all_occ = [
+                a.occurrence
+                for a in db.scalars(
+                    select(CoordinationAlert).where(
+                        CoordinationAlert.logical_key == logical_key,
+                        CoordinationAlert.alert_type == AlertType.POTENTIAL_SAME_INCIDENT,
+                    )
+                ).all()
+            ]
+            occurrence = (max(all_occ) + 1) if all_occ else 1
+            if state is not None and state.occurrences >= occurrence:
+                occurrence = state.occurrences + 1
+            db.add(
+                CoordinationAlert(
+                    alert_type=AlertType.POTENTIAL_SAME_INCIDENT,
+                    institution_id=row.institution_id,
+                    case_ids=[case_a.case_id, case_b.case_id],
+                    title=f"Potential same-incident relationship suggested - {key}",
+                    description=(
+                        "The rule engine found supporting evidence that the two cases "
+                        f"in pair {key} may concern the same incident. This is an "
+                        "automated recommendation requiring human review - no records "
+                        f"are merged or changed. (assessment #{row.id}, evidence "
+                        f"fingerprint {evidence_hash[:12]})"
+                    ),
+                    dedupe_key=logical_key if occurrence == 1 else f"{logical_key}#occ{occurrence}",
+                    logical_key=logical_key,
+                    occurrence=occurrence,
+                    assessment_id=row.id,
+                    evidence_hash=evidence_hash,
+                    created_at=now_dt,
+                )
+            )
+            created = True
+            record_audit(
+                db, actor=actor, event_type="PSI_ALERT_CREATED",
+                entity_type="relationship_assessment", entity_id=str(row.id),
+                summary=f"Informational same-incident alert opened (occurrence {occurrence})",
+                meta={"pair_key": key, "assessment_id": row.id,
+                      "occurrence": occurrence, "evidence_hash": evidence_hash},
+            )
+        if state is None:
+            # state row may be missing for legacy rows created before condition
+            # tracking existed; reconstruct from observed history.
+            hist_max = max(
+                [a.occurrence for a in db.scalars(
+                    select(CoordinationAlert).where(
+                        CoordinationAlert.logical_key == logical_key,
+                        CoordinationAlert.alert_type == AlertType.POTENTIAL_SAME_INCIDENT,
+                    )
+                ).all()] + [occurrence if created else 0]
+            )
+            db.add(
+                AlertConditionState(
+                    logical_key=logical_key,
+                    alert_type="POTENTIAL_SAME_INCIDENT",
+                    present=True,
+                    occurrences=hist_max,
+                    updated_at=now_dt,
+                )
+            )
+        else:
+            state.present = True
+            if created:
+                state.occurrences = max(state.occurrences, occurrence)
+            state.updated_at = now_dt
+        return created
+
+    # not qualifying: stale alert auto-resolves; condition recorded absent
+    if active is not None:
+        active.status = AlertStatus.RESOLVED
+        active.resolved_at = now_dt
+        active.resolved_by = "system (auto)"
+        active.resolution_note = (
+            f"Recommendation no longer POTENTIAL_SAME_INCIDENT (now "
+            f"{row.relationship_type.value}); closed automatically, history retained."
+        )
+        record_audit(
+            db, actor=actor, event_type="PSI_ALERT_STALE_RESOLVED",
+            entity_type="coordination_alert", entity_id=str(active.id),
+            summary="Same-incident informational alert auto-resolved: evidence no longer qualifies",
+            meta={"pair_key": key, "assessment_id": row.id,
+                  "new_relationship_type": row.relationship_type.value},
+        )
+    if state is None:
+        db.add(
+            AlertConditionState(
+                logical_key=logical_key,
+                alert_type="POTENTIAL_SAME_INCIDENT",
+                present=False,
+                occurrences=0,
+                updated_at=now_dt,
+            )
+        )
+    elif state.present:
+        state.present = False
+        state.updated_at = now_dt
+    return False
 
 
 def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
@@ -109,32 +262,6 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
                     summary=f"Assessment {row.relationship_type.value} for {key}",
                     after={"type": row.relationship_type.value, "rule_version": version},
                 )
-                # A potential same-incident assessment ALSO raises an
-                # informational alert (dedupe prevents duplicates).
-                if result.relationship_type == RelationshipType.POTENTIAL_SAME_INCIDENT:
-                    dedupe = f"PSI:{key}"
-                    if not db.scalar(
-                        select(CoordinationAlert).where(CoordinationAlert.dedupe_key == dedupe)
-                    ):
-                        db.add(
-                            CoordinationAlert(
-                                alert_type=AlertType.POTENTIAL_SAME_INCIDENT,
-                                institution_id=case_a.institution_id,
-                                case_ids=[case_a.case_id, case_b.case_id],
-                                title=f"Potential same-incident relationship suggested - {key}",
-                                description=(
-                                    "The rule engine found supporting evidence that cases "
-                                    f"{case_a.case_id} and {case_b.case_id} may concern the same "
-                                    "incident. This is an automated recommendation requiring "
-                                    "human review - no records are merged or changed."
-                                ),
-                                dedupe_key=dedupe,
-                                logical_key=dedupe,
-                                occurrence=1,
-                                created_at=now_dt,
-                            )
-                        )
-                        alerts_created += 1
             else:
                 was_reviewed = row.status in (
                     AssessmentStatus.CONFIRMED,
@@ -191,7 +318,19 @@ def recompute_all(db: Session, actor: str = "system") -> RecomputeResult:
                                       "current_evidence_hash": new_hash,
                                       "preserved_decision": row.status.value},
                             )
-                row.last_recomputed_at = now_dt
+            row.last_recomputed_at = now_dt
+            # Informational same-incident alert lifecycle (runs for BOTH the
+            # create and update paths, so transitions trigger it):
+            # newly-qualifying pairs open an alert; evidence changes refresh
+            # the link; no-longer-qualifying pairs get their stale alert
+            # auto-resolved while all occurrences and history are preserved.
+            qualifies = result.relationship_type == RelationshipType.POTENTIAL_SAME_INCIDENT
+            if _psi_alert_lifecycle(
+                db, qualifies=qualifies, key=key, row=row,
+                case_a=case_a, case_b=case_b, evidence_hash=new_hash,
+                now_dt=now_dt, actor=actor,
+            ):
+                alerts_created += 1
 
     db.commit()
     return RecomputeResult(

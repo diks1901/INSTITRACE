@@ -182,6 +182,8 @@ export interface AlertOut {
   title: string;
   description: string;
   occurrence: number;
+  assessment_id: number | null;
+  evidence_hash: string | null;
   status: AlertStatus;
   acknowledged_by: string | null;
   acknowledged_at: string | null;

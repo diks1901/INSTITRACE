@@ -11,7 +11,9 @@ pgserver). All results below are actual outputs; nothing is fabricated or inferr
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 ```
 
-**Result: 71 passed, 0 failed** (actual run: `71 passed, 3 warnings in 2.42s`)
+**Result: 76 passed, 0 failed** (actual run: `76 passed, 3 warnings in 3.67s`; all 3 warnings are
+third-party deprecation notices from the pinned FastAPI/Starlette stack — zero originate from
+project code)
 
 ## Backend — pytest (PostgreSQL 16.2)
 
@@ -26,7 +28,8 @@ pytest tests/ -q
 `postgresql+psycopg2://postgres:postgres@localhost:5432/institrace_test` works the same way.
 `psycopg2-binary` must be installed for PostgreSQL runs.)
 
-**Result: 71 passed, 0 failed** (actual run: `71 passed, 3 warnings in 2.78s`)
+**Result: 76 passed, 0 failed** (actual run: `76 passed, 3 warnings in 4.40s`; same third-party
+deprecation notices as the SQLite run)
 
 PostgreSQL verification also included: `alembic upgrade head` on a fresh PG database (pass),
 seed load producing identical fixture counts (15 institutions / 40 cases / 36 assessments /
@@ -38,15 +41,16 @@ Suite breakdown (by file):
 
 | Suite | Tests | Coverage highlights |
 | --- | --- | --- |
-| `test_matching.py` | 14 | Scenarios A–E; text-similarity guard; duplicate-free recompute; human-decision preservation; rule versioning; self-pair rejection; **v1.1.0 provenance semantics**: shared `source_record_ref` is procedural-only (never PSI), non-matching source refs prove nothing, shared incident refs still PSI, institution identity never assesses an incident |
+| `test_matching.py` | 15 | Scenarios A–E; text-similarity guard; duplicate-free recompute; human-decision preservation; rule versioning; self-pair rejection; **v1.1.0 provenance semantics**: shared `source_record_ref` is procedural-only (never PSI), non-matching source refs prove nothing, shared incident refs still PSI, institution identity never assesses an incident |
 | `test_alert_lifecycle.py` | 3 | **Alert occurrence lifecycle (FIX 1)**: coordination and deadline recurrence — condition gone ⇒ system `(auto)` resolves ⇒ condition back ⇒ NEW occurrence (history intact) ⇒ reruns create no duplicates; human-resolved-while-active suppression until the condition next goes absent |
 | `test_evidence_review.py` | 5 | **Evidence-versioned review**: snapshot+hash pinned at review; unchanged evidence ⇒ nothing flagged; evidence change after CONFIRMED / REJECTED / DEFERRED ⇒ decision preserved + `requires_rereview` + `ASSESSMENT_EVIDENCE_CHANGED` audit; re-review re-pins; hash determinism |
 | `test_migration_upgrade.py` | 4 | **Legacy migration (FIX 1)**: legacy DB at `69e0eedb34ac` with a RESOLVED alert → upgrade → recompute: no `IntegrityError`, occurrence 2 opened, occ-1 history preserved; ACTIVE legacy alert reused (no duplicate); legacy `system (auto)`-resolved recurrence; fresh-install `upgrade head` + seed stability (incl. review-history rows) |
+| `test_psi_alert_lifecycle.py` | 5 | **PSI-alert evidence lifecycle (final fix)** — below; all 5 scenarios |
 | `test_review_history.py` | 4 | **Append-only review history (FIX 2) + version fingerprinting (FIX 3)**: full lifecycle initial-confirm → evidence change → re-review with different decision; both decisions remain API-accessible with their own snapshots/hashes; rule-version bump with identical evidence flags re-review; seed decisions present in history; hash includes `rule_version` |
-| `test_workflow.py` | 12 | creation+history, duplicate IDs, status machine incl. terminal DISPOSED, transfer preserves history+audit, escalation, review persistence, invalid review rejected, resolved-alert traceability, role enforcement, filters |
-| `test_deadlines.py` | 6 | approaching/overdue/disposed-deadline/escalation logic on a pinned clock; duplicate-free evaluation; auto-resolve on disposal; pending reminder |
+| `test_workflow.py` | 13 | creation+history, duplicate IDs, status machine incl. terminal DISPOSED, transfer preserves history+audit, escalation, review persistence, invalid review rejected, resolved-alert traceability, role enforcement, filters |
+| `test_deadlines.py` | 7 | approaching/overdue/disposed-deadline/escalation logic on a pinned clock; duplicate-free evaluation; auto-resolve on disposal; pending reminder |
 | `test_dashboard_reports.py` | 9 | dashboard totals = live DB counts; bureau workload = DB; ageing buckets cover all active cases; disposal rate math; region filter; CSV structure+filters; CSV injection guard; overlap report separation of alert vs assessment dimensions |
-| `test_api_reliability.py` | 13 | health/meta, error envelope, validation 422s, invalid FKs, pagination, audit read-only, auth required, bad login, institution detail, demo-reset role guard |
+| `test_api_reliability.py` | 11 | health/meta, error envelope, validation 422s, invalid FKs, pagination, audit read-only, auth required, bad login, institution detail, demo-reset role guard |
 
 ## Frontend — vitest + TypeScript
 
@@ -61,7 +65,9 @@ npm run build     # tsc --noEmit && vite build
 
 **Results**
 
-- `PASS 13 tests` (`Test Files 2 passed (2), Tests 13 passed (13)`)
+- `PASS 15 tests` (`Test Files 2 passed (2) — tests 15 passed (15)`: `src/test/client.test.ts`
+  5 + `src/test/components.test.tsx` 10; an earlier version of this report said 13 — that count
+  was stale, the real suites always numbered 15)
 - `tsc --noEmit` → clean (zero type errors)
 - `vite build` → succeeds (production bundle emitted to `frontend/dist/`)
 
@@ -69,6 +75,43 @@ Frontend tests cover: API client auth/error/401-session handling, query building
 badge labeling (recommendation vs decision distinction, audit-pass regression guards on alert
 badge classes/lifecycle states), demo-data labeling, empty states, InstitutionForm client
 validation blocking submission, and the five mandated statuses all having labels.
+
+## Final stabilization pass (2026-10-30, fourth round)
+
+A final configuration-and-lifecycle audit confirmed two defects in code and one stale
+documentation claim. All fixed and regression-tested; no features added, no tests weakened:
+
+1. **Rule-engine version misconfiguration (`.env.example` vs `config.py`).** The shipped
+   template carried `INSTITRACE_RULE_ENGINE_VERSION=1.0.0` while the code default is `1.1.0`;
+   since the README instructs users to copy `.env.example` to `.env`, a documented fresh install
+   ran out-of-date rule semantics and stamped evidence hashes with the wrong version. Template
+   fixed to `1.1.0`. Verified: copied-template `.env` loads `1.1.0` via `get_settings()`; the
+   seeded database has all 36 assessments stamped `rule_version='1.1.0'`; the stored evidence
+   hash of a live assessment reproduces with `compute_evidence_hash(..., rule_version='1.1.0')`
+   and differs at `1.0.0`; the running API's `/api/v1/meta` exposes `rule_engine_version=1.1.0`.
+2. **`POTENTIAL_SAME_INCIDENT` alerts were frozen at assessment-creation time.** The matching
+   service created (or failed to create) the "possible same incident" alert only inside the
+   *create* branch of the pair loop, so a pair that later qualified — or later stopped
+   qualifying — kept a stale alert state. The service now runs an alert lifecycle for every
+   pair on every recompute (`tests/test_psi_alert_lifecycle.py`, 5 mandated scenarios):
+   - assessment transitions INSUFFICIENT_EVIDENCE / NO_RELATIONSHIP_ESTABLISHED → PSI ⇒ alert
+     created (linked to the assessment id + current evidence hash);
+   - a pair losing its supporting evidence ⇒ the still-active alert is auto-resolved
+     (`system (auto)`, note names the new relationship type) while all prior history stays;
+   - repeated recomputation reuses the active occurrence — zero duplicate alerts;
+   - qualifying evidence returning later opens a NEW occurrence (history preserved);
+   - informational PSI alerts remain separate from operational cross-bureau coordination
+     alerts, never auto-confirm or merge anything, and every reviewer decision in
+     `relationship_reviews` is untouched by the lifecycle (append-only).
+   Alerts now expose `assessment_id` + `evidence_hash` through the API (new nullable columns,
+   migration `c5d6e7f8a103`), so every informational alert is pinned to the exact assessment
+   and evidence version it was raised from; the Coordination Centre displays the link.
+3. **Stale test-count documentation.** This report claimed 13 frontend tests and a 71-test
+   backend; the real suites have long been 15 frontend / 76 backend (per-file counts were also
+   stale for 5 suites). Corrected to actual measured numbers.
+
+Both defects verified in code before changing anything; all fixes followed by fresh-database
+verification on SQLite and PostgreSQL (see the pytest sections above).
 
 ## Final critical-defect round (2026-10-30, third round)
 

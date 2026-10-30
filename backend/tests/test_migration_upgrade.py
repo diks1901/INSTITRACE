@@ -195,9 +195,24 @@ def test_fresh_install_upgrade_head_and_seed(tmp_path):
     n_reviews = db.execute(text("SELECT COUNT(*) FROM relationship_reviews")).scalar()
     assert n_reviews == 2, "seeded CONFIRMED + REJECTED decisions must be in history"
 
-    # alembic head reached
+    # alembic head reached (read the chain tail from the migration files
+    # instead of hardcoding, so later revisions do not break this test)
+    import glob, re
+
+    heads = [Path(p).stem.split("_")[0] for p in glob.glob(str(BACKEND / "alembic/versions/*.py"))]
+    versions = set()
+    downs = set()
+    for p in glob.glob(str(BACKEND / "alembic/versions/*.py")):
+        src = Path(p).read_text()
+        m1 = re.search(r'^revision: str = "([a-f0-9]+)"', src, re.M)
+        m2 = re.search(r'^down_revision: Union\[str, None\] = "([a-f0-9]+)"', src, re.M)
+        if m1:
+            versions.add(m1.group(1))
+        if m2:
+            downs.add(m2.group(1))
+    expected_head = next(iter(versions - downs))
     head = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert head == "b3c4d5e6f002"
+    assert head == expected_head
     db.close()
 
 

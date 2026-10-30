@@ -211,6 +211,13 @@ function AlertsTab({
               <AlertTypeBadge type={a.alert_type} /> <AlertStatusBadge status={a.status} />{' '}
               <OccurrenceBadge occurrence={a.occurrence} />
               <h4 style={{ margin: '8px 0 6px' }}>{a.title}</h4>
+              {a.assessment_id != null && (
+                <p className="small muted" style={{ margin: '0 0 4px' }}>
+                  Automated recommendation linked to assessment #{a.assessment_id}
+                  {a.evidence_hash && <> · evidence fingerprint <code>{a.evidence_hash.slice(0, 12)}…</code></>}
+                  {' '}— human review decides the outcome; nothing is merged or closed.
+                </p>
+              )}
             </div>
             {canAct && a.status === 'OPEN' && !showResolved && (
               <div className="button-row">

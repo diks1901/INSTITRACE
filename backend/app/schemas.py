@@ -293,6 +293,9 @@ class AlertOut(BaseModel):
     title: str
     description: str
     occurrence: int = 1  # which recurrence of this condition this alert is
+    # informational alerts link the assessment + evidence version that raised them
+    assessment_id: int | None = None
+    evidence_hash: str | None = None
     status: AlertStatus
     acknowledged_by: str | None
     acknowledged_at: datetime | None

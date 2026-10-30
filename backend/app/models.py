@@ -333,6 +333,12 @@ class CoordinationAlert(Base):
     resolved_by: Mapped[str | None] = mapped_column(String(128))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
     resolution_note: Mapped[str | None] = mapped_column(Text)
+    # Informational same-incident alerts link to the assessment + evidence
+    # version that raised them; NULL for operational alerts.
+    assessment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("relationship_assessments.id"), index=True
+    )
+    evidence_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=clock_now, nullable=False)
 
     institution: Mapped[Institution | None] = relationship()

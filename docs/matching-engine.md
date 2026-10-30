@@ -102,6 +102,15 @@ institutions produces no relationship record at all (fixture Scenario E).
 10. **Idempotence**: assessment `pair_key` uniqueness and the alert lifecycle (one ACTIVE alert
     per condition key) prevent duplicates on rerun
     (`test_repeat_recompute_creates_no_duplicates`).
+10a. **Informational PSI alerts follow the evidence** (`backend/tests/test_psi_alert_lifecycle.py`):
+    the "possible same incident" alert is re-evaluated for every pair on every recompute — created
+    when a pair newly qualifies (even one that was previously INSUFFICIENT_EVIDENCE or
+    NO_RELATIONSHIP_ESTABLISHED), reused with refreshed `assessment_id`/`evidence_hash` while the
+    pair still qualifies, auto-resolved `system (auto)` when the pair stops qualifying (the new
+    relationship type is named in the resolution note), and re-opened as a NEW occurrence when
+    qualifying evidence returns. These alerts are informational pointers to a human review (each
+    is pinned to its assessment id + evidence hash); they never confirm, merge, or close anything,
+    and append-only reviewer history in `relationship_reviews` is never touched.
 11. **Provenance ≠ incident**: a shared `source_record_ref` is recorded as typed provenance
     evidence with zero support weight and can only produce a `PROCEDURAL_LINK` — never a
     same-incident recommendation (v1.1.0, see the rule table note).
