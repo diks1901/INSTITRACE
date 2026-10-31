@@ -82,7 +82,35 @@ def test_loaded_version_is_part_of_every_evidence_fingerprint():
     assert get_settings().rule_engine_version == "1.1.0"
 
 
-# 10d. no stray committed .env can shadow the template (repo hygiene)
-def test_no_committed_env_file():
-    assert not (REPO_ROOT / ".env").exists(), ".env must never be committed"
-    assert not (BACKEND_DIR / ".env").exists(), "backend/.env must never be committed"
+# 10d. .env hygiene: files must be git-IGNORED and untracked, never ABSENT.
+# A documented install copies .env.example -> .env locally, so asserting that
+# .env does not exist produced false failures on correct installations. The
+# real security property is: the file is ignored by Git and never tracked.
+def test_env_files_are_ignored_and_not_committed():
+    import subprocess
+
+    gitignore = REPO_ROOT / ".gitignore"
+    assert gitignore.exists(), ".gitignore must exist"
+    patterns = gitignore.read_text()
+    assert ".env" in patterns, ".env must be in .gitignore"
+    assert "*.env.local" in patterns, "*.env.local must be in .gitignore"
+
+    if not (REPO_ROOT / ".git").exists():
+        # ZIP-extracted source without git metadata: the .gitignore policy
+        # above is all that can be verified.
+        return
+
+    # neither env file may be TRACKED (present in tracked files)
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", ".env", "backend/.env"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    assert tracked == [], f".env files must never be tracked by git: {tracked}"
+
+    # and the ignore policy must actually match them
+    for env_path in (".env", "backend/.env"):
+        probe = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-q", env_path],
+            cwd=REPO_ROOT,
+        )
+        assert probe.returncode == 0, f"{env_path} is not covered by .gitignore"
