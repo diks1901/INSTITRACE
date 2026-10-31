@@ -36,8 +36,15 @@ export default function LoginPage() {
       <div className="login-card">
         <h1>INSTITRACE</h1>
         <p className="sub">
-          Integrated dashboard for institution-related complaint cases across AICTE
-          bureaus/cells — synthetic demonstration build (SIH 2026 · SIH26264).
+          Institution Complaint Monitoring and Cross-Bureau Coordination System.
+          Administrative sign-in for authorized prototype users.
+        </p>
+        <p style={{ margin: '0 0 4px' }}>
+          <span className="badge demo-flag">DEMO · SYNTHETIC DATA</span>
+        </p>
+        <p className="sub" style={{ marginTop: 8 }}>
+          Smart India Hackathon 2026 · Problem Statement SIH26264 · Team SONARA (197721).
+          Not an official AICTE service.
         </p>
         {error && (
           <div className="notice error" role="alert">

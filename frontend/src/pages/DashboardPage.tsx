@@ -20,11 +20,11 @@ import { BureauWorkload, DashboardSummary, TrendMonth } from '../api/types';
 import { EmptyState, ErrorState, Loading } from '../components/primitives';
 
 const PIE_COLORS: Record<string, string> = {
-  Pending: '#7f8ea3',
-  'Under Process': '#2f7fc1',
-  Disposed: '#1e7d4f',
-  Transferred: '#5b48a4',
-  Escalated: '#b3261e',
+  Pending: '#4D6070',
+  'Under Process': '#1769AA',
+  Disposed: '#26734D',
+  Transferred: '#5B4A8A',
+  Escalated: '#B42318',
 };
 
 export default function DashboardPage() {
@@ -116,7 +116,7 @@ export default function DashboardPage() {
               <PieChart>
                 <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={85} label>
                   {pieData.map((entry) => (
-                    <Cell key={entry.name} fill={PIE_COLORS[entry.name] ?? '#7f8ea3'} />
+                    <Cell key={entry.name} fill={PIE_COLORS[entry.name] ?? '#4D6070'} />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -134,8 +134,8 @@ export default function DashboardPage() {
               <YAxis allowDecimals={false} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="active_cases" name="Active" fill="#b3261e" />
-              <Bar dataKey="total_cases" name="Total" fill="#2f7fc1" />
+              <Bar dataKey="active_cases" name="Active" fill="#B42318" />
+              <Bar dataKey="total_cases" name="Total" fill="#1769AA" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -150,8 +150,8 @@ export default function DashboardPage() {
             <YAxis allowDecimals={false} />
             <Tooltip />
             <Legend />
-            <Line type="monotone" dataKey="receipts" name="Receipts" stroke="#2f7fc1" />
-            <Line type="monotone" dataKey="disposals" name="Disposals" stroke="#1e7d4f" />
+            <Line type="monotone" dataKey="receipts" name="Receipts" stroke="#1769AA" />
+            <Line type="monotone" dataKey="disposals" name="Disposals" stroke="#26734D" />
           </LineChart>
         </ResponsiveContainer>
       </div>
