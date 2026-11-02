@@ -1,5 +1,5 @@
-import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
-import { api, clearSession, getStoredUser, setSession } from '../api/client';
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { api, clearSession, getStoredSession, onSessionInvalidated, setSession } from '../api/client';
 import { CurrentUser, Role } from '../api/types';
 
 interface AuthContextValue {
@@ -25,7 +25,22 @@ interface LoginResponse {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<CurrentUser | null>(() => getStoredUser<CurrentUser>());
+  // Atomic restore: only a session with BOTH a token and a valid user object
+  // is treated as authenticated; anything partial is cleared by the client.
+  const [user, setUser] = useState<CurrentUser | null>(
+    () => getStoredSession<CurrentUser>()?.user ?? null,
+  );
+
+  // When the backend rejects a session (401) or storage is incomplete, the
+  // API client invalidates the session and asks us to drop React state, so the
+  // protected router sends the user back to the login screen.
+  useEffect(
+    () =>
+      onSessionInvalidated(() => {
+        setUser(null);
+      }),
+    [],
+  );
 
   const value = useMemo<AuthContextValue>(() => {
     const role = user?.role;
