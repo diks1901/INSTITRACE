@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment / secrets
+.env
+*.env.local
+
+# Local databases (synthetic; regenerable via migrations + seed)
+*.db
+*.sqlite3
+
+# Alembic cache
+alembic/__pycache__/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
