@@ -8,14 +8,24 @@ missing. None of these are hidden elsewhere.
 1. **Authentication is demo mode.** Passwords are salted PBKDF2 hashes and tokens are HMAC-signed,
    but the signing secret is a documented local default, there is no rate limiting or lockout, and
    sessions don't track device/IP. It must never be used against real users.
-2. **Bureau officers are not scoped to their bureau** — any `BUREAU_OFFICER` can act on any case.
-   Production would scope permissions per bureau/cell.
+2. **~~Bureau officers are not scoped to their bureau~~ — FIXED (2026-11-03).**
+   `BUREAU_OFFICER` accounts now carry a bureau assignment (`demo_users.bureau_id`,
+   migration `d7e8f9a0b104`) and are scoped to their own bureau for every case
+   operation (list, detail, history, create, update, actions, status, assign,
+   escalate, next-action, transfer-initiation, alert acknowledge/resolve).
+   Registration into or spoofing of another bureau returns 403. Unassigned
+   officer accounts fail closed. Cross-bureau visibility of coordination
+   indicators (alerts, relationship assessments, institution-level summaries)
+   remains intact by design — that visibility is the product's purpose.
+   *Remaining demo caveat: only one officer account (`officer.rb` → RB) is
+   seeded; production would need a bureau assignment UI + an RB/PGRC/EVC
+   officer account set.*
 3. **No TLS/transport hardening** in the local demo configuration.
 
 ## Data and integrations
 
 4. **PostgreSQL verified via bundled server (pgserver, PG 16.2)** — migrations, seed and the full
-   87-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
+   101-test suite pass on PostgreSQL; a real Windows TCP-based PostgreSQL install remains
    documented-but-not-executed in this sandbox.
    (2026-10-30: full suite, `alembic upgrade head` on a fresh PG database, AND legacy-upgrade
    verification - build a database at the initial revision `69e0eedb34ac`, insert legacy rows,

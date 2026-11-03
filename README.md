@@ -104,7 +104,7 @@ Open <http://localhost:5173> and sign in with a demo account below.
 | Username | Password | Role | Can |
 | --- | --- | --- | --- |
 | `admin` | `InstiTrace#Demo1` | ADMIN | everything, incl. demo reset |
-| `officer.rb` | `Officer#Demo1` | BUREAU_OFFICER | case intake & workflow |
+| `officer.rb` | `Officer#Demo1` | BUREAU_OFFICER (scoped to **RB**) | case intake & workflow for RB-owned cases only; foreign-bureau operations → 403 |
 | `reviewer` | `Reviewer#Demo1` | REVIEWER | relationship review decisions |
 | `manager` | `Manager#Demo1` | READ_ONLY_MANAGER | read-only oversight |
 
@@ -113,7 +113,7 @@ Defaults ship for local convenience only; override via `INSTITRACE_DEMO_*` env v
 ### 5. Run tests and checks
 
 ```powershell
-# Backend tests (87 tests) - default SQLite
+# Backend tests (101 tests) - default SQLite
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 
 # Backend tests against PostgreSQL (after section 6; reuse an empty test database)
@@ -142,7 +142,7 @@ pip install psycopg2-binary
 python -m app.seed
 ```
 
-> **Verification status:** BOTH database paths pass the full 87-test suite. In the build sandbox
+> **Verification status:** BOTH database paths pass the full 101-test suite. In the build sandbox
 > PostgreSQL 16.2 (bundled via `pgserver`) ran: `alembic upgrade head`, the seed, the live API
 > smoke test, and the entire pytest suite (`INSTITRACE_TEST_DATABASE_URL=<pg dsn> pytest tests/`).
 > A Windows TCP-install walkthrough is documented but was not executable inside the sandbox.
@@ -178,7 +178,7 @@ INSTITRACE/
 ├── backend/            FastAPI app, matching engine, services, alembic, pytest suite
 │   ├── app/            main.py, models.py, schemas.py, seed.py, matching/, services/, routers/
 │   ├── alembic/        migration environment + initial schema migration
-│   └── tests/          87 backend tests (matching, alert + PSI-alert lifecycles, env-config audit, evidence-versioned review,
+│   └── tests/          101 backend tests (matching, alert + PSI-alert lifecycles, env-config audit, evidence-versioned review,
 │                       review history, legacy-migration upgrades, workflow, deadlines,
 │                       reports, reliability)
 ├── frontend/           React + Vite + TypeScript SPA (pages/, components/, api/)

@@ -11,7 +11,7 @@ pgserver). All results below are actual outputs; nothing is fabricated or inferr
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 ```
 
-**Result: 87 passed, 0 failed** (actual run: `87 passed, 3 warnings in 3.48s`; all 3 warnings are
+**Result: 101 passed, 0 failed** (actual run, 2026-11-03: `101 passed, 3 warnings in 3.96s`; all 3 warnings are
 third-party deprecation notices from the pinned FastAPI/Starlette stack — zero originate from
 project code)
 
@@ -28,7 +28,7 @@ pytest tests/ -q
 `postgresql+psycopg2://postgres:postgres@localhost:5432/institrace_test` works the same way.
 `psycopg2-binary` must be installed for PostgreSQL runs.)
 
-**Result: 83 passed, 0 failed** (actual run: `83 passed, 3 warnings in 5.32s`; same third-party
+**Result: 101 passed, 0 failed** (actual run, 2026-11-03: `101 passed, 3 warnings in 4.79s`; same third-party
 deprecation notices as the SQLite run)
 
 PostgreSQL verification also included: `alembic upgrade head` on a fresh PG database (pass),
@@ -52,6 +52,7 @@ Suite breakdown (by file):
 | `test_deadlines.py` | 7 | approaching/overdue/disposed-deadline/escalation logic on a pinned clock; duplicate-free evaluation; auto-resolve on disposal; pending reminder |
 | `test_dashboard_reports.py` | 9 | dashboard totals = live DB counts; bureau workload = DB; ageing buckets cover all active cases; disposal rate math; region filter; CSV structure+filters; CSV injection guard; overlap report separation of alert vs assessment dimensions |
 | `test_api_reliability.py` | 11 | health/meta, error envelope, validation 422s, invalid FKs, pagination, audit read-only, auth required, bad login, institution detail, demo-reset role guard |
+| `test_bureau_authorization.py` | 14 | **Bureau-level authorization (mandate A)**: officer.rb assigned to RB; officer list/detail/history/mutations scoped to own bureau; spoofed bureau filters/creation rejected (403); transfer out changes ownership and locks further ops; permitted ops audited; cross-bureau coordination indicators (alerts, relationships, institution summaries) stay visible; admin global; reviewer reviews but cannot operate cases; manager read-only with audit access |
 
 ## Frontend — vitest + TypeScript
 
@@ -114,7 +115,7 @@ documentation claim. All fixed and regression-tested; no features added, no test
    backend; the real suites were 15 frontend / 76 backend at the time (per-file counts were also
    stale for 5 suites). Corrected to actual measured numbers. A subsequent mandate-driven round
    added 7 regression tests (PSI-lifecycle +3, config audit +4), bringing the backend suite to
-   its current **87** — all counts above and in README/known-limitations reflect 87 passed on
+   its current **101** — all counts above and in README/known-limitations reflect the 101-test suite passing
    both engines, 15 frontend.
 
 Both defects verified in code before changing anything; all fixes followed by fresh-database
@@ -234,7 +235,7 @@ With `uvicorn app.main:app` on :8000 and `vite` on :5173 (proxy → backend):
 ## NOT VERIFIED (honest list)
 
 - **TCP PostgreSQL + DSN via environment .env loading** — verified using PostgreSQL 16.2 over a
-  local unix socket (pgserver) with migrations, seed and the full 87-test suite; a Windows
+  local unix socket (pgserver) with migrations, seed and the full 101-test suite; a Windows
   TCP-DSN walkthrough is documented but not executed here.
 - **Browser automation** (no Playwright/Cypress E2E) — interactions verified by HTTP-level tests,
   component tests with jsdom, and manual curl-based E2E.

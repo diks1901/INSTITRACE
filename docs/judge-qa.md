@@ -47,7 +47,7 @@ room; the **technical** answer is for a judge who digs deeper.
 
 **Q6. What database do you run in production — and prove it?**
 
-**Short and honest:** The system is *engine-portable* and both engines run the full test suite here in the sandbox: 87/87 pass on SQLite (default dev path) AND 87/87 on PostgreSQL 16.2 (pgserver-bundled). The one honest limitation: a real Windows-side PostgreSQL install (TCP) is documented as NOT VERIFIED — our PG verification used a local unix-socket server.
+**Short and honest:** The system is *engine-portable* and both engines run the full test suite here in the sandbox: 101/101 pass on SQLite (default dev path) AND 101/101 on PostgreSQL 16.2 (pgserver-bundled). The one honest limitation: a real Windows-side PostgreSQL install (TCP) is documented as NOT VERIFIED — our PG verification used a local unix-socket server.
 
 **Technical:** `INSTITRACE_DATABASE_URL` env selects the engine; Alembic migrations run against both (`alembic current` → `c5d6e7f8a103` head, zero drift); SQLAlchemy handles dialect specifics (window/normalized code is portable; only SQLite gets the `PRAGMA foreign_keys=ON` hook). Report at `docs/test-report.md` records both runs verbatim.
 
@@ -109,7 +109,7 @@ room; the **technical** answer is for a judge who digs deeper.
 
 ---
 
-**Q14. What does your 87-test backend suite actually protect?**
+**Q14. What does your 101-test backend suite actually protect?**
 
 **Short:** The matching rules, the alert lifecycle, role authorization at HTTP level, state-machine legality, CSV/export correctness, decision preservation, auth session lifecycle — i.e., everything an honest evaluator would try to break on stage.
 

@@ -46,7 +46,8 @@ alerts, 3 human decisions preserved."*
 
 ## Step 6b (optional depth) — Evidence-versioned review (~30 s)
 
-On any CONFIRMED assessment, edit the underlying complaint description (officer login) so the
+On the CONFIRMED assessment of DEMO-CASE-001 ↔ 002, edit **DEMO-CASE-001**'s description
+(officer login — it is RB-owned; officers are scoped to their own bureau) so the
 cited incident changes, then recompute. The review badge now reads **"Outdated decision —
 re-review"**: the preserved decision is shown alongside the *new* evidence, with the reviewer's
 original snapshot kept on the record and in the audit trail. Record a fresh decision to clear
@@ -55,7 +56,9 @@ reviewer never saw."*
 
 ## Step 7 — Accountability (~45 s)
 
-Open **DEMO-CASE-013** (PGRC, approaching deadline). Transfer it to EVC with officer + reason.
+Open **DEMO-CASE-037** (RB, long-pending). Sign in as the **RB officer** and transfer it to
+EVC with receiving officer + reason. (Officers can only transfer *their own bureau's* cases;
+for a PGRC case use the admin login.)
 Show: status becomes **Transferred** (not disposed), transfer history table has from/to,
 timeline gained a TRANSFER entry. Then **Audit Trail** → filter `DEMO-CASE-013` → the
 `CASE_TRANSFERRED` audit event with before/after state and the acting user.
