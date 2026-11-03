@@ -15,6 +15,8 @@ import {
   StatusBadge,
 } from '../components/primitives';
 import { InstitutionForm } from '../pages/InstitutionsPage';
+import { ReviewForm } from '../pages/CoordinationCentrePage';
+import { setSession } from '../api/client';
 
 describe('status & review labels', () => {
   it('renders human-readable status badges', () => {
@@ -101,5 +103,44 @@ describe('navigation structure', () => {
     expect(Object.keys(STATUS_LABELS).sort()).toEqual(
       ['DISPOSED', 'ESCALATED', 'PENDING', 'TRANSFERRED', 'UNDER_PROCESS'].sort(),
     );
+  });
+});
+
+describe('ReviewForm (defect D regression)', () => {
+  const assessment = {
+    id: 7,
+    relationship_type: 'INSUFFICIENT_EVIDENCE',
+  } as Parameters<typeof ReviewForm>[0]['assessment'];
+
+  it('preselects NO decision and disables submit until an explicit choice', () => {
+    render(<ReviewForm assessment={assessment} onDone={() => {}} />);
+    const select = screen.getByLabelText(/Decision/) as HTMLSelectElement;
+    expect(select.value).toBe('');
+    expect(screen.getByRole('button', { name: 'Record decision' })).toBeDisabled();
+  });
+
+  it('warns before reviewing an abstained (insufficient-evidence) assessment', () => {
+    render(<ReviewForm assessment={assessment} onDone={() => {}} />);
+    expect(screen.getByText(/engine abstained/i)).toBeInTheDocument();
+  });
+
+  it('enables submit only after explicit decision + rationale, then posts it', async () => {
+    // review posts are protected — a session must exist
+    setSession('tok', { username: 'reviewer', role: 'REVIEWER' });
+    const done = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+    render(<ReviewForm assessment={assessment} onDone={done} />);
+    fireEvent.change(screen.getByLabelText(/Decision/), { target: { value: 'DEFERRED' } });
+    const submit = screen.getByRole('button', { name: 'Record decision' });
+    expect(submit).toBeDisabled(); // rationale still too short
+    fireEvent.change(screen.getByLabelText(/rationale/i), { target: { value: 'Need original documents' } });
+    expect(submit).toBeEnabled();
+    fireEvent.submit(submit.closest('form')!);
+    await vi.waitFor(() => expect(done).toHaveBeenCalled());
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.decision).toBe('DEFERRED');
+    expect(body.rationale).toContain('original documents');
   });
 });

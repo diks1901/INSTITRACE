@@ -520,14 +520,20 @@ function AssessmentsTab({
   );
 }
 
-function ReviewForm({ assessment, onDone }: { assessment: Assessment; onDone: () => void }) {
-  const [decision, setDecision] = useState<'CONFIRMED' | 'REJECTED' | 'DEFERRED'>('CONFIRMED');
+export function ReviewForm({ assessment, onDone }: { assessment: Assessment; onDone: () => void }) {
+  // No decision is preselected: the reviewer must make an explicit choice.
+  // Preselecting "Confirm" risked accidental confirmations — especially on
+  // INSUFFICIENT_EVIDENCE assessments where confirming is rarely correct.
+  const [decision, setDecision] = useState<'' | 'CONFIRMED' | 'REJECTED' | 'DEFERRED'>('');
   const [rationale, setRationale] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const canSubmit = !busy && decision !== '' && rationale.trim().length >= 5;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!decision) return;
     setBusy(true);
     setError(null);
     try {
@@ -540,17 +546,32 @@ function ReviewForm({ assessment, onDone }: { assessment: Assessment; onDone: ()
   }
 
   return (
-    <form onSubmit={submit}>
+    <form onSubmit={submit} aria-label="Record human review decision">
       {error && <div className="notice error">{error}</div>}
       <p className="small">
         The automated recommendation is <strong><RelBadge type={assessment.relationship_type} /></strong>.
         Your decision is recorded separately, survives recomputation and enters the audit trail.
         Confirming a relationship never merges or closes either complaint.
       </p>
+      {assessment.relationship_type === 'INSUFFICIENT_EVIDENCE' && (
+        <div className="notice warn" role="note">
+          The engine abstained: available records do not establish anything either way.
+          Consider <strong>Defer — need more information</strong> unless you have verified
+          additional evidence outside this panel.
+        </div>
+      )}
       <div className="form-grid">
         <div>
-          <label htmlFor="r-decision">Decision</label>
-          <select id="r-decision" value={decision} onChange={(e) => setDecision(e.target.value as typeof decision)}>
+          <label htmlFor="r-decision">Decision * (choose explicitly)</label>
+          <select
+            id="r-decision"
+            value={decision}
+            onChange={(e) => setDecision(e.target.value as typeof decision)}
+            required
+          >
+            <option value="" disabled>
+              Select decision…
+            </option>
             <option value="CONFIRMED">Confirm relationship</option>
             <option value="REJECTED">Reject relationship</option>
             <option value="DEFERRED">Defer — need more information</option>
@@ -562,7 +583,7 @@ function ReviewForm({ assessment, onDone }: { assessment: Assessment; onDone: ()
         </div>
       </div>
       <div className="button-row">
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={!canSubmit} aria-disabled={!canSubmit}>
           {busy ? 'Recording…' : 'Record decision'}
         </button>
       </div>
