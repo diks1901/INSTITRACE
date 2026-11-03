@@ -112,9 +112,13 @@ def test_case_detail_embeds_linked_case_objects(client, tokens):
     c = cases[0]
     detail = client.get(f"/api/v1/cases/{c['id']}", headers=tokens["admin"]).json()
     assert detail["assessments"], "DEMO-CASE-001 participates in an assessment"
-    a = detail["assessments"][0]
-    for side in ("source_case", "candidate_case"):
-        assert a[side] is not None, f"{side} missing from case-detail payload"
-        assert {"id", "case_id", "status"} <= set(a[side]), f"{side} lacks identity fields"
-    other = a["candidate_case"] if a["source_case"]["id"] == c["id"] else a["source_case"]
-    assert other["case_id"] == "DEMO-CASE-002"
+    for a in detail["assessments"]:
+        for side in ("source_case", "candidate_case"):
+            assert a[side] is not None, f"{side} missing from case-detail payload"
+            assert {"id", "case_id", "status"} <= set(a[side]), f"{side} lacks identity fields"
+    pair = next(
+        a for a in detail["assessments"]
+        if {a["source_case"]["case_id"], a["candidate_case"]["case_id"]}
+        == {"DEMO-CASE-001", "DEMO-CASE-002"}
+    )
+    assert pair["relationship_type"] == "POTENTIAL_SAME_INCIDENT"
