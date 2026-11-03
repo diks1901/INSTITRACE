@@ -8,7 +8,15 @@ from datetime import date
 INCIDENT_REF_RE = re.compile(r"\bINC-\d{4}-\d{3,}\b")
 PROCEEDING_REF_RE = re.compile(r"\bPROC-\d{4}-\d{3,}\b")
 CASE_ID_RE = re.compile(r"\bDEMO-CASE-\d{3,}\b")
-INCIDENT_DATE_RE = re.compile(r"(?:incident dated|incident on|occurred on)\s+(\d{4}-\d{2}-\d{2})")
+# Sentence-initial "Incident dated ..." is the form used by real complaint
+# narratives, so the phrase part is matched case-insensitively. The date itself
+# stays a strict YYYY-MM-DD shape, and only dates immediately after an
+# incident-phrasing cue are extracted (receipt/disposal/action dates are not
+# preceded by these cues and are therefore never misread as incident dates).
+INCIDENT_DATE_RE = re.compile(
+    r"(?:incident dated|incident on|occurred on)\s+(\d{4}-\d{2}-\d{2})",
+    re.IGNORECASE,
+)
 
 STOPWORDS = {
     " complaint", "about", "regarding", "institution", "college", "students",

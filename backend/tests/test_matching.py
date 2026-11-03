@@ -254,3 +254,42 @@ def test_institution_identity_alone_never_assesses_psi(db):
     assessment = pair(db, "DEMO-CASE-005", "DEMO-CASE-006")
     assert assessment.relationship_type == RelationshipType.INSUFFICIENT_EVIDENCE
     assert assessment.score is None
+
+
+# --- Date-extraction regression (defect A): sentence-initial "Incident dated" ---
+def test_incident_date_extraction_is_case_insensitive():
+    from app.matching.text_utils import incident_dates
+    from datetime import date as _date
+    assert incident_dates("Incident dated 2025-03-10, reference INC-2025-0042.") == {_date(2025, 3, 10)}
+    assert incident_dates("incident dated 2025-03-10") == {_date(2025, 3, 10)}
+    assert incident_dates("INCIDENT DATED 2025-03-10") == {_date(2025, 3, 10)}
+    assert incident_dates("The incident on 2025-09-28 was reported.") == {_date(2025, 9, 28)}
+
+
+def test_incident_date_extraction_ignores_non_incident_dates():
+    from app.matching.text_utils import incident_dates
+    noise = (
+        "Received on 2026-01-05. Expected disposal by 2026-02-01. "
+        "Last action dated 2026-01-20. Hearing scheduled for 2026-03-01."
+    )
+    assert incident_dates(noise) == set(), "receipt/disposal/action dates must not parse"
+
+
+def test_seed_pair_003_004_has_structured_incident_dates(db):
+    """Scenario B: both demo narratives sentence-case 'Incident dated'; date
+    evidence must now reach the evidence panel (previously both were missed and
+    the panel claimed a missing date), and refs must still conflict."""
+    from sqlalchemy import select
+    from app.models import RelationshipAssessment
+    row = db.scalar(select(RelationshipAssessment).where(
+        RelationshipAssessment.pair_key == "DEMO-CASE-003|DEMO-CASE-004"))
+    assert row is not None
+    assert row.relationship_type.value == "NO_RELATIONSHIP_ESTABLISHED"
+    conflict_txt = str(row.conflicting_evidence)
+    # 2025-03-10 vs 2025-09-28 == 202 days apart -> date-compatibility conflict
+    assert "R3_INCIDENT_DATE_COMPATIBILITY" in conflict_txt
+    assert "202" in conflict_txt, "date gap (202 days) must be reported"
+    missing_txt = str(row.missing_evidence)
+    assert "no explicit incident date" not in missing_txt.lower(), (
+        "both records carry a structured date; none may be reported missing")
+    assert "R6_DISTINCT_INCIDENT_REFERENCES" in conflict_txt
