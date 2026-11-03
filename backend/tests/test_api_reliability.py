@@ -98,3 +98,23 @@ def test_institution_search_and_detail(client, tokens):
 def test_demo_reset_requires_admin(client, tokens):
     forbidden = client.post("/api/v1/admin/demo-reset", headers=tokens["manager"])
     assert forbidden.status_code == 403
+
+
+# --- Defect B regression: case detail must embed the paired case identify ---
+def test_case_detail_embeds_linked_case_objects(client, tokens):
+    """Case-detail assessments previously lacked source_case/candidate_case
+    embeds, so the UI rendered 'OTHER CASE: —' while the Coordination Centre
+    showed the pair correctly. The payload must now match both routers."""
+    cases = client.get(
+        "/api/v1/cases", params={"q": "DEMO-CASE-001"}, headers=tokens["admin"]
+    ).json()["items"]
+    assert len(cases) == 1
+    c = cases[0]
+    detail = client.get(f"/api/v1/cases/{c['id']}", headers=tokens["admin"]).json()
+    assert detail["assessments"], "DEMO-CASE-001 participates in an assessment"
+    a = detail["assessments"][0]
+    for side in ("source_case", "candidate_case"):
+        assert a[side] is not None, f"{side} missing from case-detail payload"
+        assert {"id", "case_id", "status"} <= set(a[side]), f"{side} lacks identity fields"
+    other = a["candidate_case"] if a["source_case"]["id"] == c["id"] else a["source_case"]
+    assert other["case_id"] == "DEMO-CASE-002"

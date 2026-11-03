@@ -174,9 +174,14 @@ def _detail(db: Session, pk: int) -> dict:
         .order_by(CoordinationAlert.created_at.desc())
     ).all()
     alerts = [a for a in alerts if case.case_id in (a.case_ids or [])]
+    # Embedded nested case references must match the relationships router —
+    # the case-detail page resolves 'Other case' from source_case/candidate_case
+    # (missing embeds previously rendered as "OTHER CASE: —").
+    from .relationships import _with_cases
+
     return {
         "case": CaseDetailOut.model_validate(case),
-        "assessments": [RelationshipAssessmentOut.model_validate(a) for a in assessments],
+        "assessments": _with_cases(db, list(assessments)),
         "alerts": alerts,
     }
 
