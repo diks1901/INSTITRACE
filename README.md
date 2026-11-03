@@ -113,7 +113,7 @@ Defaults ship for local convenience only; override via `INSTITRACE_DEMO_*` env v
 ### 5. Run tests and checks
 
 ```powershell
-# Backend tests (83 tests) - default SQLite
+# Backend tests (87 tests) - default SQLite
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 
 # Backend tests against PostgreSQL (after section 6; reuse an empty test database)
@@ -142,7 +142,7 @@ pip install psycopg2-binary
 python -m app.seed
 ```
 
-> **Verification status:** BOTH database paths pass the full 83-test suite. In the build sandbox
+> **Verification status:** BOTH database paths pass the full 87-test suite. In the build sandbox
 > PostgreSQL 16.2 (bundled via `pgserver`) ran: `alembic upgrade head`, the seed, the live API
 > smoke test, and the entire pytest suite (`INSTITRACE_TEST_DATABASE_URL=<pg dsn> pytest tests/`).
 > A Windows TCP-install walkthrough is documented but was not executable inside the sandbox.
@@ -178,7 +178,7 @@ INSTITRACE/
 ├── backend/            FastAPI app, matching engine, services, alembic, pytest suite
 │   ├── app/            main.py, models.py, schemas.py, seed.py, matching/, services/, routers/
 │   ├── alembic/        migration environment + initial schema migration
-│   └── tests/          83 backend tests (matching, alert + PSI-alert lifecycles, env-config audit, evidence-versioned review,
+│   └── tests/          87 backend tests (matching, alert + PSI-alert lifecycles, env-config audit, evidence-versioned review,
 │                       review history, legacy-migration upgrades, workflow, deadlines,
 │                       reports, reliability)
 ├── frontend/           React + Vite + TypeScript SPA (pages/, components/, api/)
@@ -197,4 +197,7 @@ INSTITRACE/
 - [docs/requirements-traceability.md](docs/requirements-traceability.md) — requirement ↔ implementation ↔ tests
 - [docs/test-report.md](docs/test-report.md) — actual commands and results
 - [docs/demo-script.md](docs/demo-script.md) — the 3–5 minute judge demo
+- [docs/sih-2026-pitch-deck.md](docs/sih-2026-pitch-deck.md) — 6-slide pitch deck with speaker notes
+- [docs/judge-qa.md](docs/judge-qa.md) — 17 prepared judge questions (short + technical answers)
+- [docs/prior-art.md](docs/prior-art.md) — prior-art comparison vs CPGRAMS & SIH26264 peers (with citations)
 - [docs/known-limitations.md](docs/known-limitations.md) — honest gap list

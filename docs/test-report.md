@@ -11,7 +11,7 @@ pgserver). All results below are actual outputs; nothing is fabricated or inferr
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 ```
 
-**Result: 83 passed, 0 failed** (actual run: `83 passed, 3 warnings in 4.02s`; all 3 warnings are
+**Result: 87 passed, 0 failed** (actual run: `87 passed, 3 warnings in 3.48s`; all 3 warnings are
 third-party deprecation notices from the pinned FastAPI/Starlette stack — zero originate from
 project code)
 
@@ -66,7 +66,9 @@ npm run build     # tsc --noEmit && vite build
 
 **Results**
 
-- `PASS 15 tests` (`Test Files 2 passed (2) — tests 15 passed (15)`: `src/test/client.test.ts`
+- `PASS 27 tests` (`Test Files 2 passed (2) — tests 27 passed (27)`: `src/test/client.test.ts`
+  (14: client API + 9-test auth-session lifecycle describe) and `src/test/components.test.tsx`
+  (13: UI component + ReviewForm defect-D regression tests).
   5 + `src/test/components.test.tsx` 10; an earlier version of this report said 13 — that count
   was stale, the real suites always numbered 15)
 - `tsc --noEmit` → clean (zero type errors)
@@ -112,7 +114,7 @@ documentation claim. All fixed and regression-tested; no features added, no test
    backend; the real suites were 15 frontend / 76 backend at the time (per-file counts were also
    stale for 5 suites). Corrected to actual measured numbers. A subsequent mandate-driven round
    added 7 regression tests (PSI-lifecycle +3, config audit +4), bringing the backend suite to
-   its current **83** — all counts above and in README/known-limitations reflect 83 passed on
+   its current **87** — all counts above and in README/known-limitations reflect 87 passed on
    both engines, 15 frontend.
 
 Both defects verified in code before changing anything; all fixes followed by fresh-database
@@ -232,7 +234,7 @@ With `uvicorn app.main:app` on :8000 and `vite` on :5173 (proxy → backend):
 ## NOT VERIFIED (honest list)
 
 - **TCP PostgreSQL + DSN via environment .env loading** — verified using PostgreSQL 16.2 over a
-  local unix socket (pgserver) with migrations, seed and the full 83-test suite; a Windows
+  local unix socket (pgserver) with migrations, seed and the full 87-test suite; a Windows
   TCP-DSN walkthrough is documented but not executed here.
 - **Browser automation** (no Playwright/Cypress E2E) — interactions verified by HTTP-level tests,
   component tests with jsdom, and manual curl-based E2E.
