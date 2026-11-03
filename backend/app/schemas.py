@@ -36,6 +36,7 @@ class LoginResponse(BaseModel):
     username: str
     display_name: str
     role: UserRole
+    bureau_code: str | None = None  # assigned bureau for BUREAU_OFFICER accounts
     demo_notice: str
 
 
@@ -43,6 +44,7 @@ class CurrentUser(BaseModel):
     username: str
     display_name: str
     role: UserRole
+    bureau_code: str | None = None
 
 
 # ------------------------------------------------------------ institutions --

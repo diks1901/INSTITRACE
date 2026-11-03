@@ -1,16 +1,38 @@
 """Coordination & operational alert endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import AlertStatus, AlertType, CoordinationAlert, DemoUser
 from ..schemas import AcknowledgeRequest, AlertOut, Page, ResolveRequest
-from ..security import require_roles
+from ..models import ComplaintCase
+from ..security import officer_bureau, require_roles
 from ..services import alert_service
 from ..services.audit import record_audit
 from ..clock import now
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
+
+
+def _officer_can_act(db: Session, alert: CoordinationAlert, user: DemoUser) -> None:
+    """Officers may acknowledge/resolve only alerts that involve ≥1 of their
+    own bureau's cases. Viewing alerts stays unrestricted (coordination
+    indicators), but acting on another bureau's operational alert is denied."""
+    if user.role.value != "BUREAU_OFFICER":
+        return
+    own = officer_bureau(user)
+    ids = alert.case_ids or []
+    owns = db.scalars(
+        select(ComplaintCase.id).where(
+            ComplaintCase.case_id.in_(ids), ComplaintCase.bureau_id == own
+        )
+    ).first()
+    if owns is None:
+        raise HTTPException(
+            status_code=403,
+            detail="This alert does not involve any case owned by your bureau",
+        )
 
 
 @router.get("", response_model=Page[AlertOut])
@@ -51,7 +73,7 @@ def get_alert(pk: int, db: Session = Depends(get_db), _: DemoUser = Depends(requ
     alert = db.get(CoordinationAlert, pk)
     if alert is None:
         raise HTTPException(status_code=404, detail="Alert not found")
-    return alert
+    return alert  # viewing stays open to all authenticated roles
 
 
 @router.post("/{pk}/acknowledge", response_model=AlertOut)
@@ -62,6 +84,7 @@ def acknowledge(
     alert = db.get(CoordinationAlert, pk)
     if alert is None:
         raise HTTPException(status_code=404, detail="Alert not found")
+    _officer_can_act(db, alert, user)
     if alert.status != AlertStatus.OPEN:
         raise HTTPException(status_code=422, detail="Only OPEN alerts can be acknowledged")
     alert.status = AlertStatus.ACKNOWLEDGED
@@ -85,6 +108,7 @@ def resolve(
     alert = db.get(CoordinationAlert, pk)
     if alert is None:
         raise HTTPException(status_code=404, detail="Alert not found")
+    _officer_can_act(db, alert, user)
     if alert.status == AlertStatus.RESOLVED:
         raise HTTPException(status_code=422, detail="Alert is already resolved")
     before = {"status": alert.status.value}

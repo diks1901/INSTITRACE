@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 
 const DEMO_CREDENTIALS = [
   { username: 'admin', password: 'InstiTrace#Demo1', label: 'Admin' },
-  { username: 'officer.rb', password: 'Officer#Demo1', label: 'Bureau Officer' },
+  { username: 'officer.rb', password: 'Officer#Demo1', label: 'Bureau Officer (RB only)' },
   { username: 'reviewer', password: 'Reviewer#Demo1', label: 'Reviewer' },
   { username: 'manager', password: 'Manager#Demo1', label: 'Read-Only Manager' },
 ];

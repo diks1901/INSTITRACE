@@ -37,7 +37,10 @@ export default function Layout() {
           {user && (
             <>
               <span>{user.display_name}</span>
-              <span className="ub-role">{ROLE_LABELS[user.role] ?? user.role}</span>
+              <span className="ub-role">
+                {ROLE_LABELS[user.role] ?? user.role}
+                {user.bureau_code ? ` · ${user.bureau_code}` : ''}
+              </span>
               <button
                 className="ub-logout"
                 onClick={() => {

@@ -390,6 +390,12 @@ class DemoUser(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False), nullable=False)
+    # Bureau assignment for BUREAU_OFFICER accounts (record-level scoping).
+    # Nullable so ADMIN / REVIEWER / READ_ONLY_MANAGER have no bureau scope.
+    # An officer WITHOUT an assignment must be denied case operations (fail closed).
+    bureau_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bureaus.id"), nullable=True, index=True
+    )
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     password_salt: Mapped[str] = mapped_column(String(64), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

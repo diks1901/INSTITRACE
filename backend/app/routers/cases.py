@@ -37,7 +37,7 @@ from ..schemas import (
     StatusUpdateRequest,
     TransferRequest,
 )
-from ..security import require_roles
+from ..security import officer_bureau, require_roles, scope_case_access
 from ..services import case_service
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -75,12 +75,20 @@ def list_cases(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db),
-    _: DemoUser = Depends(READ),
+    user: DemoUser = Depends(READ),
 ):
     setts = get_settings()
     stmt = select(ComplaintCase).options(
         selectinload(ComplaintCase.institution), selectinload(ComplaintCase.bureau)
     )
+    # Bureau scoping: BUREAU_OFFICER accounts are restricted to their own
+    # bureau's registry. A requested bureau_id for another bureau is a spoofing
+    # attempt -> 403; otherwise the scope is applied unconditionally.
+    if user.role.value == "BUREAU_OFFICER":
+        own = officer_bureau(user)
+        if bureau_id is not None and bureau_id != own:
+            raise HTTPException(status_code=403, detail="Cannot list another bureau's registry")
+        bureau_id = own
     if q:
         like = f"%{q}%"
         stmt = stmt.where((ComplaintCase.case_id.ilike(like)) | (ComplaintCase.subject.ilike(like)))
@@ -144,11 +152,20 @@ def create_case(
     db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    # A bureau officer can only register a case *into their own bureau*;
+    # bureau spoofing in the payload is rejected (fail closed).
+    if user.role.value == "BUREAU_OFFICER":
+        own = officer_bureau(user)
+        if payload.bureau_id != own:
+            raise HTTPException(
+                status_code=403,
+                detail="Officers may only register cases for their own bureau",
+            )
     case = case_service.create_case(db, payload, user.username)
     return CaseOut.model_validate(case)
 
 
-def _detail(db: Session, pk: int) -> dict:
+def _detail(db: Session, pk: int, user: DemoUser | None = None) -> dict:
     case = db.scalar(
         select(ComplaintCase).where(ComplaintCase.id == pk).options(
             selectinload(ComplaintCase.institution),
@@ -159,6 +176,11 @@ def _detail(db: Session, pk: int) -> dict:
     )
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
+    if user is not None and user.role.value == "BUREAU_OFFICER":
+        # Protected case details are scoped to the owning bureau. The officer
+        # still sees the *existence* of cross-bureau coordination via the
+        # alerts/assessments surfaces — just not foreign case payloads here.
+        scope_case_access(user, case)
     assessments = db.scalars(
         select(RelationshipAssessment).where(
             (RelationshipAssessment.source_case_id == pk)
@@ -187,8 +209,17 @@ def _detail(db: Session, pk: int) -> dict:
 
 
 @router.get("/{pk}")
-def case_detail(pk: int, db: Session = Depends(get_db), _: DemoUser = Depends(READ)):
-    return _detail(db, pk)
+def case_detail(pk: int, db: Session = Depends(get_db), user: DemoUser = Depends(READ)):
+    return _detail(db, pk, user)
+
+
+def _scope_case(db: Session, pk: int, user: DemoUser, what: str) -> ComplaintCase:
+    """Load a case and enforce bureau ownership for BUREAU_OFFICER users."""
+    case = db.get(ComplaintCase, pk)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    scope_case_access(user, case, what=what)
+    return case
 
 
 @router.patch("/{pk}", response_model=CaseOut)
@@ -196,14 +227,18 @@ def update_case(
     pk: int, payload: CaseUpdate, db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    if user.role.value == "BUREAU_OFFICER":
+        _scope_case(db, pk, user, "Case update")
     return CaseOut.model_validate(case_service.update_case(db, pk, payload, user.username))
 
 
 @router.get("/{pk}/history", response_model=list[CaseActionOut])
-def case_history(pk: int, db: Session = Depends(get_db), _: DemoUser = Depends(READ)):
+def case_history(pk: int, db: Session = Depends(get_db), user: DemoUser = Depends(READ)):
     case = db.get(ComplaintCase, pk)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
+    if user.role.value == "BUREAU_OFFICER":
+        scope_case_access(user, case, what="Case history")
     return [CaseActionOut.model_validate(a) for a in case.actions]
 
 
@@ -212,6 +247,8 @@ def add_action(
     pk: int, payload: AddActionRequest, db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    if user.role.value == "BUREAU_OFFICER":
+        _scope_case(db, pk, user, "Remark/action")
     return CaseOut.model_validate(
         case_service.add_action(db, pk, summary=payload.summary,
                                 action_type=payload.action_type, actor=user.username)
@@ -223,6 +260,8 @@ def update_status(
     pk: int, payload: StatusUpdateRequest, db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    if user.role.value == "BUREAU_OFFICER":
+        _scope_case(db, pk, user, "Status change")
     return CaseOut.model_validate(
         case_service.change_status(
             db, pk, to_status=payload.to_status, summary=payload.summary,
@@ -237,6 +276,8 @@ def assign(
     pk: int, payload: AssignmentUpdateRequest, db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    if user.role.value == "BUREAU_OFFICER":
+        _scope_case(db, pk, user, "Assignment")
     return CaseOut.model_validate(
         case_service.change_assignment(db, pk, officer_name=payload.officer_name,
                                        summary=payload.summary, actor=user.username)
@@ -248,6 +289,10 @@ def transfer(
     pk: int, payload: TransferRequest, db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    # An officer initiates a transfer only from their own bureau's case; the
+    # receiving bureau takes ownership (access follows the case thereafter).
+    if user.role.value == "BUREAU_OFFICER":
+        _scope_case(db, pk, user, "Transfer")
     return CaseOut.model_validate(
         case_service.transfer_case(db, pk, to_bureau_id=payload.to_bureau_id,
                                    to_officer_name=payload.to_officer_name,
@@ -260,6 +305,8 @@ def escalate(
     pk: int, payload: EscalateRequest, db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    if user.role.value == "BUREAU_OFFICER":
+        _scope_case(db, pk, user, "Escalation")
     return CaseOut.model_validate(
         case_service.escalate_case(db, pk, reason=payload.reason, actor=user.username)
     )
@@ -270,6 +317,8 @@ def next_action(
     pk: int, payload: NextActionUpdateRequest, db: Session = Depends(get_db),
     user: DemoUser = Depends(require_roles("ADMIN", "BUREAU_OFFICER")),
 ):
+    if user.role.value == "BUREAU_OFFICER":
+        _scope_case(db, pk, user, "Next-action update")
     return CaseOut.model_validate(
         case_service.update_next_action(
             db, pk, next_action=payload.next_action,

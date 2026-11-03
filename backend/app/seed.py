@@ -459,15 +459,18 @@ def seed_demo(db: Session, reset: bool = False) -> dict:
       expected_in=8, next_action="Draft clarification note")
 
     # ---------------- demo users ---------------------------------------------
+    # BUREAU_OFFICER accounts are scoped to exactly one bureau (bureau_id).
+    rb = db.scalar(select(Bureau).where(Bureau.code == "RB"))
     users = [
-        ("admin", "Demo Administrator", UserRole.ADMIN),
-        ("officer.rb", "Demo Bureau Officer (RB)", UserRole.BUREAU_OFFICER),
-        ("reviewer", "Demo Relationship Reviewer", UserRole.REVIEWER),
-        ("manager", "Demo Read-Only Manager", UserRole.READ_ONLY_MANAGER),
+        ("admin", "Demo Administrator", UserRole.ADMIN, None),
+        ("officer.rb", "Demo Bureau Officer (RB)", UserRole.BUREAU_OFFICER, rb.id if rb else None),
+        ("reviewer", "Demo Relationship Reviewer", UserRole.REVIEWER, None),
+        ("manager", "Demo Read-Only Manager", UserRole.READ_ONLY_MANAGER, None),
     ]
-    for username, display, role in users:
+    for username, display, role, bureau_id in users:
         digest, salt = hash_password(DEMO_PASSWORDS[username])
         db.add(DemoUser(username=username, display_name=display, role=role,
+                        bureau_id=bureau_id,
                         password_hash=digest, password_salt=salt))
     db.commit()
 

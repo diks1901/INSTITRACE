@@ -79,16 +79,25 @@ def create_institution(
 def institution_detail(
     pk: int,
     db: Session = Depends(get_db),
-    _: DemoUser = Depends(require_roles()),
+    user: DemoUser = Depends(require_roles()),
 ):
     inst = db.get(Institution, pk)
     if inst is None:
         raise HTTPException(status_code=404, detail="Institution not found")
-    cases = db.scalars(
+    q = (
         select(ComplaintCase).where(ComplaintCase.institution_id == pk)
         .options(selectinload(ComplaintCase.bureau), selectinload(ComplaintCase.institution))
         .order_by(ComplaintCase.receipt_date.desc())
-    ).all()
+    )
+    # Officers receive only their own bureau's case payloads here; institution-
+    # level summary counts + alerts/assessment indicators remain organization-
+    # wide by design (cross-bureau coordination visibility is the point).
+    officer_scope = None
+    if user.role.value == "BUREAU_OFFICER":
+        from ..security import officer_bureau
+        officer_scope = officer_bureau(user)
+    all_cases = db.scalars(q).all()
+    cases = [c for c in all_cases if officer_scope is None or c.bureau_id == officer_scope]
     alerts = db.scalars(
         select(CoordinationAlert).where(CoordinationAlert.institution_id == pk)
         .order_by(CoordinationAlert.created_at.desc())
@@ -99,12 +108,15 @@ def institution_detail(
     ).all()
     return {
         "institution": InstitutionOut.model_validate(inst),
+        # `cases` payloads are scoped for officers; summary counts remain the
+        # institution-level totals (cross-bureau coordination indicator, deliberate).
         "cases": [CaseOut.model_validate(c) for c in cases],
         "alerts": alerts,
         "assessments": assessments,
+        "visible_case_scope": "own_bureau" if officer_scope is not None else "all",
         "summary": {
-            "total_cases": len(cases),
-            "active_cases": sum(1 for c in cases if c.status != CaseStatus.DISPOSED),
+            "total_cases": len(all_cases),
+            "active_cases": sum(1 for c in all_cases if c.status != CaseStatus.DISPOSED),
             "open_coordination_alerts": sum(
                 1 for a in alerts if a.status != AlertStatus.RESOLVED
                 and a.alert_type.value == "CROSS_BUREAU_COORDINATION"
@@ -145,13 +157,17 @@ def update_institution(
 def institution_cases(
     pk: int,
     db: Session = Depends(get_db),
-    _: DemoUser = Depends(require_roles()),
+    user: DemoUser = Depends(require_roles()),
 ):
     if db.get(Institution, pk) is None:
         raise HTTPException(status_code=404, detail="Institution not found")
-    cases = db.scalars(
+    q = (
         select(ComplaintCase).where(ComplaintCase.institution_id == pk)
         .options(selectinload(ComplaintCase.bureau), selectinload(ComplaintCase.institution))
         .order_by(ComplaintCase.receipt_date.desc())
-    ).all()
+    )
+    if user.role.value == "BUREAU_OFFICER":
+        from ..security import officer_bureau
+        q = q.where(ComplaintCase.bureau_id == officer_bureau(user))
+    cases = db.scalars(q).all()
     return [CaseOut.model_validate(c) for c in cases]

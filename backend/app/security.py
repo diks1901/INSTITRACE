@@ -106,3 +106,45 @@ CASE_WRITER_ROLES = (UserRole.ADMIN, UserRole.BUREAU_OFFICER)
 REVIEWER_ROLES = (UserRole.ADMIN, UserRole.REVIEWER)
 ALERT_HANDLER_ROLES = (UserRole.ADMIN, UserRole.BUREAU_OFFICER, UserRole.REVIEWER)
 ADMIN_ONLY = (UserRole.ADMIN,)
+
+
+# --------------------------------------------------------------------------- #
+# Bureau scoping (record-level authorization for BUREAU_OFFICER accounts)
+#
+# An officer account carries a `bureau_id` assignment. Operational actions on
+# complaint cases may only touch cases owned by that bureau. Cross-bureau
+# *coordination indicators* (alerts, relationship assessments, institution-level
+# summaries) stay visible — that is the central purpose of INSTITRACE — but
+# protected case details and mutations do not. Officers without an assignment
+# fail CLOSED: every scoped operation is denied.
+# --------------------------------------------------------------------------- #
+def officer_bureau(user: DemoUser) -> int:
+    """Return the officer's assigned bureau id or raise 403 (fail closed)."""
+    if user.bureau_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This officer account has no bureau assignment",
+        )
+    return user.bureau_id
+
+
+def require_own_bureau(user: DemoUser, bureau_id: int, *, what: str = "record") -> None:
+    """403 unless the user is authorized for `bureau_id`.
+
+    Non-officer roles reach this helper only from paths already role-gated to
+    ADMIN/officer, so ADMIN passes; officers must own the bureau."""
+    if user.role == UserRole.ADMIN:
+        return
+    allowed = officer_bureau(user)
+    if bureau_id != allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"{what} does not belong to your bureau",
+        )
+
+
+def scope_case_access(user: DemoUser, case, *, what: str = "Case") -> None:
+    """Record-level check: officers may only touch cases owned by their bureau."""
+    if user.role == UserRole.ADMIN:
+        return
+    require_own_bureau(user, case.bureau_id, what=what)

@@ -22,6 +22,7 @@ interface LoginResponse {
   username: string;
   display_name: string;
   role: Role;
+  bureau_code?: string | null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           username: resp.username,
           display_name: resp.display_name,
           role: resp.role,
+          bureau_code: resp.bureau_code ?? null,
         };
         setSession(resp.token, u);
         setUser(u);

@@ -264,4 +264,5 @@ export interface CurrentUser {
   username: string;
   display_name: string;
   role: Role;
+  bureau_code?: string | null;  // assigned bureau for BUREAU_OFFICER accounts
 }

@@ -89,9 +89,11 @@ def test_disposed_is_terminal(client, tokens):
 
 
 def test_transfer_preserves_history_and_audit(client, tokens, db):
-    pk = _pk(client, tokens["admin"], "DEMO-CASE-034")
-    case_before = get_case_by_uid(db, "DEMO-CASE-034")
+    # officer.rb is RB-scoped; use an RB-owned case as the transfer source.
+    pk = _pk(client, tokens["admin"], "DEMO-CASE-037")
+    case_before = get_case_by_uid(db, "DEMO-CASE-037")
     old_bureau = case_before.bureau_id
+    assert old_bureau == 1, "DEMO-CASE-037 is an RB-owned case"
     target_bureau = 3 if old_bureau != 3 else 1
 
     resp = client.post(f"/api/v1/cases/{pk}/transfer", headers=tokens["officer.rb"], json={
@@ -109,7 +111,7 @@ def test_transfer_preserves_history_and_audit(client, tokens, db):
     assert len(transfers) >= 1
     assert any(t.from_bureau_id == old_bureau and t.to_bureau_id == target_bureau
                for t in transfers)
-    audit = db.scalars(select(AuditEvent).where(AuditEvent.entity_id == "DEMO-CASE-034",
+    audit = db.scalars(select(AuditEvent).where(AuditEvent.entity_id == "DEMO-CASE-037",
                                                 AuditEvent.event_type == "CASE_TRANSFERRED")).all()
     assert audit, "transfer must create an audit event"
     hist = client.get(f"/api/v1/cases/{pk}/history", headers=tokens["admin"]).json()
