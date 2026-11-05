@@ -1,0 +1,12 @@
+/* Search Cases panel — government-formal, keyboard-usable */
+.search-panel { border: 1px solid var(--line); background: #FBFCFE; padding: 12px 14px; margin-bottom: 14px; }
+.search-header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+.search-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 12px; }
+.search-grid label { font-size: 12px; color: var(--ink-soft); display: block; margin-bottom: 3px; font-weight: 600; }
+.search-grid input, .search-grid select { width: 100%; box-sizing: border-box; }
+.search-actions { display: flex; gap: 8px; margin-top: 10px; }
+.search-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip-filter { padding-right: 2px; }
+.chip-x { background: none; border: none; color: var(--ink-soft); cursor: pointer; font-size: 13px; padding: 0 4px; line-height: 1; }
+.chip-x:hover { color: #b00020; }
+@media (max-width: 640px) { .search-grid { grid-template-columns: 1fr 1fr; } .search-actions { flex-wrap: wrap; } }

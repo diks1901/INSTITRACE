@@ -11,7 +11,7 @@ pgserver). All results below are actual outputs; nothing is fabricated or inferr
 cd backend; ..\.venv\Scripts\Activate.ps1; pytest tests/ -q
 ```
 
-**Result: 101 passed, 0 failed** (actual run, 2026-11-03: `101 passed, 3 warnings in 3.96s`; all 3 warnings are
+**Result: 118 passed, 0 failed** (actual run, 2026-11-04: `118 passed, 3 warnings in 5.14s`; all 3 warnings are
 third-party deprecation notices from the pinned FastAPI/Starlette stack — zero originate from
 project code)
 
@@ -28,7 +28,7 @@ pytest tests/ -q
 `postgresql+psycopg2://postgres:postgres@localhost:5432/institrace_test` works the same way.
 `psycopg2-binary` must be installed for PostgreSQL runs.)
 
-**Result: 101 passed, 0 failed** (actual run, 2026-11-03: `101 passed, 3 warnings in 4.79s`; same third-party
+**Result: 118 passed, 0 failed** (actual run, 2026-11-04: `118 passed, 3 warnings in 6.15s`; same third-party
 deprecation notices as the SQLite run)
 
 PostgreSQL verification also included: `alembic upgrade head` on a fresh PG database (pass),
@@ -67,9 +67,9 @@ npm run build     # tsc --noEmit && vite build
 
 **Results**
 
-- `PASS 27 tests` (`Test Files 2 passed (2) — tests 27 passed (27)`: `src/test/client.test.ts`
-  (14: client API + 9-test auth-session lifecycle describe) and `src/test/components.test.tsx`
-  (13: UI component + ReviewForm defect-D regression tests).
+- `PASS 34 tests` (`Test Files 2 passed (2) — tests 34 passed (34)`: `src/test/client.test.ts`
+  (14: client API + 9-test auth-session lifecycle), `src/test/components.test.tsx`
+  (13: UI component + ReviewForm defect-D regression), `src/test/search-form.test.tsx` (7: Search Cases form — fields present, combined filters applied, Enter submits, clear resets, active-filter chips removable).
   5 + `src/test/components.test.tsx` 10; an earlier version of this report said 13 — that count
   was stale, the real suites always numbered 15)
 - `tsc --noEmit` → clean (zero type errors)
@@ -115,7 +115,7 @@ documentation claim. All fixed and regression-tested; no features added, no test
    backend; the real suites were 15 frontend / 76 backend at the time (per-file counts were also
    stale for 5 suites). Corrected to actual measured numbers. A subsequent mandate-driven round
    added 7 regression tests (PSI-lifecycle +3, config audit +4), bringing the backend suite to
-   its current **101** — all counts above and in README/known-limitations reflect the 101-test suite passing
+   its current **118** — all counts above and in README/known-limitations reflect the 101-test suite passing
    both engines, 15 frontend.
 
 Both defects verified in code before changing anything; all fixes followed by fresh-database
@@ -235,7 +235,7 @@ With `uvicorn app.main:app` on :8000 and `vite` on :5173 (proxy → backend):
 ## NOT VERIFIED (honest list)
 
 - **TCP PostgreSQL + DSN via environment .env loading** — verified using PostgreSQL 16.2 over a
-  local unix socket (pgserver) with migrations, seed and the full 101-test suite; a Windows
+  local unix socket (pgserver) with migrations, seed and the full 118-test suite; a Windows
   TCP-DSN walkthrough is documented but not executed here.
 - **Browser automation** (no Playwright/Cypress E2E) — interactions verified by HTTP-level tests,
   component tests with jsdom, and manual curl-based E2E.

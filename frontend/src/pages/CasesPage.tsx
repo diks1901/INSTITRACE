@@ -1,3 +1,4 @@
+import './search.css';
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, buildQuery } from '../api/client';
@@ -25,9 +26,13 @@ export default function CasesPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
+  // Applied filters come from the URL (source of truth, shareable);
+  // the search panel edits a local draft and applies via Search / Enter.
   const filters = {
     q: params.get('q') ?? '',
+    case_id: params.get('case_id') ?? '',
     institution_q: params.get('institution_q') ?? '',
+    permanent_id: params.get('permanent_id') ?? '',
     bureau_id: params.get('bureau_id') ?? '',
     region: params.get('region') ?? '',
     category: params.get('category') ?? '',
@@ -90,123 +95,23 @@ export default function CasesPage() {
         {canWriteCases && <button onClick={() => setShowCreate(true)}>+ Register complaint</button>}
       </div>
       <div className="card">
-        <div className="filters">
-          <div>
-            <label htmlFor="case-q">Case ID / subject</label>
-            <input id="case-q" value={filters.q} onChange={(e) => update('q', e.target.value)} placeholder="DEMO-CASE-001" />
-          </div>
-          <div>
-            <label htmlFor="case-inst">Institution</label>
-            <input
-              id="case-inst"
-              value={filters.institution_q}
-              onChange={(e) => update('institution_q', e.target.value)}
-              placeholder="name or permanent ID"
-            />
-          </div>
-          <div>
-            <label htmlFor="case-bureau">Bureau/Cell</label>
-            <select id="case-bureau" value={filters.bureau_id} onChange={(e) => update('bureau_id', e.target.value)}>
-              <option value="">All</option>
-              {(meta?.bureaus ?? []).map((b: BureauOut) => (
-                <option key={b.id} value={b.id}>
-                  {b.code}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="case-region">Region</label>
-            <select id="case-region" value={filters.region} onChange={(e) => update('region', e.target.value)}>
-              <option value="">All</option>
-              {REGIONS.map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="case-category">Category</label>
-            <select id="case-category" value={filters.category} onChange={(e) => update('category', e.target.value)}>
-              <option value="">All</option>
-              {ALL_CATEGORIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="case-status">Status</label>
-            <select id="case-status" value={filters.status} onChange={(e) => update('status', e.target.value)}>
-              <option value="">All</option>
-              {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                <option key={v} value={v}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="case-from">Received from</label>
-            <input id="case-from" type="date" value={filters.receipt_from} onChange={(e) => update('receipt_from', e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="case-to">Received to</label>
-            <input id="case-to" type="date" value={filters.receipt_to} onChange={(e) => update('receipt_to', e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="case-deadline">Deadline state</label>
-            <select
-              id="case-deadline"
-              value={filters.overdue ? 'overdue' : filters.approaching ? 'approaching' : ''}
-              onChange={(e) => {
-                update('overdue', '');
-                update('approaching', '');
-                if (e.target.value) update(e.target.value, 'true');
-              }}
-            >
-              <option value="">All</option>
-              <option value="overdue">Overdue</option>
-              <option value="approaching">Approaching deadline</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="case-review">Review state</label>
-            <select id="case-review" value={filters.review_state} onChange={(e) => update('review_state', e.target.value)}>
-              <option value="">All</option>
-              <option value="PENDING_REVIEW">Pending review</option>
-              <option value="CONFIRMED">Confirmed</option>
-              <option value="REJECTED">Rejected</option>
-              <option value="DEFERRED">Deferred</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="case-sort">Sort</label>
-            <select
-              id="case-sort"
-              value={`${filters.sort}:${filters.sort_dir}`}
-              onChange={(e) => {
-                const [s, d] = e.target.value.split(':');
-                const next = new URLSearchParams(params);
-                next.set('sort', s);
-                next.set('sort_dir', d);
-                setParams(next);
-              }}
-            >
-              <option value="receipt_date:desc">Newest received</option>
-              <option value="receipt_date:asc">Oldest received</option>
-              <option value="expected_disposal_date:asc">Expected disposal ↑</option>
-              <option value="expected_disposal_date:desc">Expected disposal ↓</option>
-              <option value="case_id:asc">Case ID ↑</option>
-              <option value="status:asc">Status ↑</option>
-            </select>
-          </div>
-          {activeFilterCount > 0 && (
-            <>
-              <button className="secondary" onClick={() => setParams(new URLSearchParams())}>
-                Reset {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}
-              </button>
-            </>
-          )}
-        </div>
+        <CaseSearchForm
+          filters={filters}
+          bureaus={meta?.bureaus ?? []}
+          regions={REGIONS}
+          categories={ALL_CATEGORIES}
+          activeCount={activeFilterCount}
+          onSubmit={(next) => setParams(next)}
+          onClear={() => setParams(new URLSearchParams())}
+          onRemoveChip={(key) => {
+            const next = new URLSearchParams(params);
+            next.delete(key);
+            if (key === 'overdue') next.delete('approaching');
+            if (key === 'approaching') next.delete('overdue');
+            next.delete('page');
+            setParams(next);
+          }}
+        />
 
         {loading ? (
           <Loading />
@@ -428,5 +333,226 @@ function CreateCaseModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+const FILTER_LABELS: Record<string, string> = {
+  q: 'Case ID / subject',
+  case_id: 'Case ID (exact)',
+  institution_q: 'Institution',
+  permanent_id: 'Permanent ID',
+  bureau_id: 'Bureau/Cell',
+  region: 'Region',
+  category: 'Category',
+  status: 'Status',
+  receipt_from: 'Received from',
+  receipt_to: 'Received to',
+  overdue: 'Overdue',
+  approaching: 'Approaching deadline',
+  review_state: 'Review state',
+};
+
+export function CaseSearchForm({
+  filters,
+  bureaus,
+  regions,
+  categories,
+  activeCount,
+  onSubmit,
+  onClear,
+  onRemoveChip,
+}: {
+  filters: Record<string, string>;
+  bureaus: BureauOut[];
+  regions: string[];
+  categories: string[];
+  activeCount: number;
+  onSubmit: (next: URLSearchParams) => void;
+  onClear: () => void;
+  onRemoveChip: (key: string) => void;
+}) {
+  const [draft, setDraft] = useState<Record<string, string>>(filters);
+  // Keep the draft in sync with applied URL params (e.g. chip removals).
+  useEffect(() => {
+    setDraft(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(filters)]);
+
+  function set(key: string, value: string) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const next = new URLSearchParams();
+    for (const [k, v] of Object.entries(draft)) {
+      if (v && !['page'].includes(k)) next.set(k, v);
+    }
+    onSubmit(next);
+  }
+
+  function chipText(key: string, value: string): string {
+    let v = value;
+    if (key === 'bureau_id') v = bureaus.find((b) => String(b.id) === value)?.code ?? `ID ${value}`;
+    if (key === 'status') v = (STATUS_LABELS as Record<string, string>)[value] ?? value;
+    if (key === 'overdue') v = value === 'true' ? 'Yes' : value;
+    if (key === 'approaching') v = value === 'true' ? 'Yes' : value;
+    if (key === 'review_state') v = value.replace('_', ' ').toLowerCase();
+    return `${FILTER_LABELS[key] ?? key}: ${v}`;
+  }
+
+  const chips = Object.entries(filters).filter(
+    ([k, v]) => v && !['page', 'sort', 'sort_dir'].includes(k),
+  );
+
+  return (
+    <form className="search-panel" onSubmit={submit} data-testid="case-search-form">
+      <div className="search-header">
+        <h4 style={{ margin: 0 }}>Search cases</h4>
+        <span className="small" style={{ color: 'var(--ink-soft)' }}>
+          Searches the full registry on the server — not just the rows on screen.
+        </span>
+      </div>
+      <div className="search-grid">
+        <div>
+          <label htmlFor="case-q">Case / Complaint ID or subject</label>
+          <input id="case-q" value={draft.q} onChange={(e) => set('q', e.target.value)} placeholder="e.g. DEMO-CASE-001 or CASE-00" />
+        </div>
+        <div>
+          <label htmlFor="case-exact-id">Case ID (exact)</label>
+          <input id="case-exact-id" value={draft.case_id} onChange={(e) => set('case_id', e.target.value)} placeholder="DEMO-CASE-001" />
+        </div>
+        <div>
+          <label htmlFor="case-inst">Institution name</label>
+          <input id="case-inst" value={draft.institution_q} onChange={(e) => set('institution_q', e.target.value)} placeholder="partial name, e.g. Sunrise" />
+        </div>
+        <div>
+          <label htmlFor="case-pid">AICTE Permanent ID (exact)</label>
+          <input id="case-pid" value={draft.permanent_id} onChange={(e) => set('permanent_id', e.target.value)} placeholder="DEMO-INS-001" />
+        </div>
+        <div>
+          <label htmlFor="case-bureau">Bureau/Cell</label>
+          <select id="case-bureau" value={draft.bureau_id} onChange={(e) => set('bureau_id', e.target.value)}>
+            <option value="">All</option>
+            {bureaus.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.code} — {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="case-region">Region</label>
+          <select id="case-region" value={draft.region} onChange={(e) => set('region', e.target.value)}>
+            <option value="">All</option>
+            {regions.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="case-category">Complaint category</label>
+          <select id="case-category" value={draft.category} onChange={(e) => set('category', e.target.value)}>
+            <option value="">All</option>
+            {categories.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="case-status">Case status</label>
+          <select id="case-status" value={draft.status} onChange={(e) => set('status', e.target.value)}>
+            <option value="">All</option>
+            {Object.entries(STATUS_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="case-from">Received from</label>
+          <input id="case-from" type="date" value={draft.receipt_from} onChange={(e) => set('receipt_from', e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="case-to">Received to</label>
+          <input id="case-to" type="date" value={draft.receipt_to} onChange={(e) => set('receipt_to', e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="case-deadline">Deadline state</label>
+          <select
+            id="case-deadline"
+            value={draft.overdue ? 'overdue' : draft.approaching ? 'approaching' : ''}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                overdue: e.target.value === 'overdue' ? 'true' : '',
+                approaching: e.target.value === 'approaching' ? 'true' : '',
+              }))
+            }
+          >
+            <option value="">All</option>
+            <option value="overdue">Overdue</option>
+            <option value="approaching">Approaching deadline</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="case-review">Review state</label>
+          <select id="case-review" value={draft.review_state} onChange={(e) => set('review_state', e.target.value)}>
+            <option value="">All</option>
+            <option value="PENDING_REVIEW">Pending review</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="DEFERRED">Deferred</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="case-sort">Sort</label>
+          <select
+            id="case-sort"
+            value={`${draft.sort}:${draft.sort_dir}`}
+            onChange={(e) => {
+              const [sv, d] = e.target.value.split(':');
+              setDraft((dd) => ({ ...dd, sort: sv, sort_dir: d }));
+            }}
+          >
+            <option value="receipt_date:desc">Newest received</option>
+            <option value="receipt_date:asc">Oldest received</option>
+            <option value="expected_disposal_date:asc">Expected disposal ↑</option>
+            <option value="expected_disposal_date:desc">Expected disposal ↓</option>
+            <option value="case_id:asc">Case ID ↑</option>
+            <option value="status:asc">Status ↑</option>
+          </select>
+        </div>
+      </div>
+      <div className="search-actions">
+        <button type="submit">Search</button>
+        <button type="button" className="secondary" onClick={onClear} disabled={chips.length === 0}>
+          Clear filters
+        </button>
+        {activeCount > 0 && (
+          <span className="small" style={{ color: 'var(--ink-soft)', alignSelf: 'center' }}>
+            {activeCount} active filter{activeCount === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+      {chips.length > 0 && (
+        <div className="search-chips" role="list" aria-label="Active filters">
+          {chips.map(([k, v]) => (
+            <span key={k} className="chip chip-filter" role="listitem">
+              {chipText(k, v)}
+              <button
+                type="button"
+                className="chip-x"
+                aria-label={`Remove filter ${FILTER_LABELS[k] ?? k}`}
+                onClick={() => onRemoveChip(k)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </form>
   );
 }

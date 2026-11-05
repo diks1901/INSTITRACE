@@ -57,8 +57,10 @@ SORTABLE = {
 @router.get("", response_model=Page[CaseOut])
 def list_cases(
     q: str | None = Query(default=None, description="Search case ID or subject"),
+    case_id: str | None = Query(default=None, description="Exact case/complaint ID (case-insensitive)"),
     institution_id: int | None = None,
     institution_q: str | None = Query(default=None, description="Institution name/permanent ID"),
+    permanent_id: str | None = Query(default=None, description="Exact AICTE permanent ID"),
     bureau_id: int | None = None,
     region: str | None = None,
     category: str | None = None,
@@ -92,13 +94,17 @@ def list_cases(
     if q:
         like = f"%{q}%"
         stmt = stmt.where((ComplaintCase.case_id.ilike(like)) | (ComplaintCase.subject.ilike(like)))
+    if case_id:
+        stmt = stmt.where(func.lower(ComplaintCase.case_id) == case_id.strip().lower())
     if institution_id:
         stmt = stmt.where(ComplaintCase.institution_id == institution_id)
-    if institution_q or region:
+    if institution_q or region or permanent_id:
         stmt = stmt.join(Institution, ComplaintCase.institution_id == Institution.id)
         if institution_q:
             like = f"%{institution_q}%"
             stmt = stmt.where((Institution.name.ilike(like)) | (Institution.permanent_id.ilike(like)))
+        if permanent_id:
+            stmt = stmt.where(func.lower(Institution.permanent_id) == permanent_id.strip().lower())
         if region:
             stmt = stmt.where(Institution.region == region)
     if bureau_id:

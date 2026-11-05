@@ -55,7 +55,7 @@ stay in the demo script (`docs/demo-script.md`).
   - matching thresholds are fixed, versioned (`rule_version`, evidence hash) — a decision's fingerprint is auditable;
   - append‑only review history; DISPOSED is terminal; audits are read‑only by design;
   - role separation enforced in the API, not just the UI (ADMIN / BUREAU_OFFICER / REVIEWER / READ‑ONLY MANAGER).
-- **Defence‑grade QA**: 101 backend + 27 frontend automated tests passing on *both* SQLite and PostgreSQL.
+- **QA evidence**: 118 backend + 34 frontend automated tests passing on *both* SQLite and PostgreSQL.
 
 **Visual**: layered architecture diagram (UI → API → services → DB) with a shield column listing the safeguards.
 **Say**: "Every safeguard is backed by a failing‑before, passing‑after regression test — the count is on the slide, and it is reproducible."

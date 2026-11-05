@@ -62,7 +62,7 @@ Public GitHub shows several SIH26264 prototypes. Verified capabilities from thei
    rule version (pair DEMO-CASE-005↔006 DEFERRED is pinned in the seed and by test).
 3. **Deterministic rules with named evidence.** No ML black box: R1–R7 each fire or
    don't, with human-readable evidence lines (see `docs/matching-engine.md`).
-4. **Dual-engine verified.** 101 backend tests pass on SQLite AND PostgreSQL 16.2 (pgserver
+4. **Dual-engine verified.** 118 backend tests pass on SQLite AND PostgreSQL 16.2 (pgserver
    harness), zero schema drift (`docs/test-report.md`).
 5. **Append-only audit separation.** Two history layers: case *business* history vs
    immutable audit events; the audit router exposes no mutation routes at all.

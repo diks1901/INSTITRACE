@@ -241,7 +241,11 @@ function AlertsTab({
           <div className="chip-list">
             {a.case_ids.map((cid) => (
               <span key={cid} className="chip">
-                {cid}
+                {/* Alerts carry business case IDs; navigate via the registry's
+                    server-side exact-ID search (no client-side guessing). */}
+                <Link to={`/cases?case_id=${encodeURIComponent(cid)}`} title={`Open ${cid} in Case Registry`}>
+                  {cid}
+                </Link>
               </span>
             ))}
           </div>
